@@ -34,7 +34,7 @@ planner_pipe = pipeline(
     "text-generation",
     model=planner_model,
     tokenizer=planner_tokenizer,
-    max_new_tokens=512,  # 限制生成长度
+    max_new_tokens=1024,  # 限制生成长度
     do_sample=True,
     temperature=0.7,
     top_p=0.95
@@ -56,7 +56,7 @@ executor_pipe = pipeline(
     "text-generation",
     model=executor_model,
     tokenizer=executor_tokenizer,
-    max_new_tokens=1024,
+    max_new_tokens=2048,
     do_sample=True,
     temperature=0.7,
     top_p=0.95
