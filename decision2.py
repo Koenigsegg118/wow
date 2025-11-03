@@ -11,6 +11,7 @@ class AgentState(TypedDict):
     task: str  # 用户的原始任务
     plan: str  # 规划者生成的计划
     result: str  # 执行者生成的最终结果
+    planner_decision: str  # 规划者的决定: 'execute' 或 'end'
     messages: Annotated[list, operator.add]  # 用于多轮对话（可选，但推荐）
 
 
@@ -108,12 +109,66 @@ def planner_node(state: AgentState) -> dict:
         "你的目标是接收一个复杂的任务，并将其分解为一系列清晰、简洁、可执行的步骤。"
         "不要执行这些步骤，只输出步骤列表。"
     )
+    # system_message = (
+    #     "你是一个高级AI规划师。\n"
+    #     "你的目标是接收一个任务，并决定是需要一个详细的执行计划，还是可以直接回答。\n"
+    #     "你必须以 JSON 格式输出你的决定。\n\n"
+    #     "1. 如果任务复杂，需要执行者处理，请输出: \n"
+    #     '{"action": "execute", "plan": "这里是你的详细步骤..."}\n\n'
+    #     "2. 如果任务是一个简单的问题（例如 '今天天气如何' 或 '2+2等于几'），你可以直接回答，请输出: \n"
+    #     '{"action": "end", "answer": "这里是你的直接答案..."}\n\n'
+    #     "确保你的输出是且仅是一个有效的JSON。"
+    # )
 
-    plan = call_local_model(planner_pipe, system_message, task)
+    raw_plan = call_local_model(planner_pipe, system_message, task)
 
-    print(f"规划者生成的计划:\n{plan}")
+    print(f"规划者生成的计划:\n{raw_plan}")
 
-    return {"plan": plan, "messages": [("planner", plan)]}
+    return {"plan": raw_plan, "messages": [("planner", raw_plan)]}
+
+    try:
+        # 尝试解析模型的JSON输出
+        # 有时模型会在JSON前后添加```json ... ```, 我们尝试清理
+        if "```json" in raw_plan:
+            raw_plan = raw_plan.split("```json")[1].split("```")[0].strip()
+
+        decision_json = json.loads(raw_plan)
+        action = decision_json.get("action")
+
+        if action == "execute":
+            plan = decision_json.get("plan", "No plan provided")
+            print("规划者决定: [执行]")
+            return {
+                "plan": plan,
+                "planner_decision": "execute",
+                "messages": [("planner", raw_plan)]
+            }
+
+        elif action == "end":
+            answer = decision_json.get("answer", "No answer provided")
+            print("规划者决定: [结束]")
+            # 如果规划者直接回答，我们将此答案放入 'result' 字段
+            return {
+                "result": answer,
+                "planner_decision": "end",
+                "messages": [("planner", raw_plan)]
+            }
+
+        else:
+            # 如果JSON无效或缺少 'action'
+            raise ValueError("JSON中缺少 'action' 字段或 'action' 值无效")
+
+    except json.JSONDecodeError as e:
+        print(f"!!! 错误: 规划者未能输出有效的JSON。错误: {e} !!!")
+        print(f"原始输出: {raw_plan}")
+        # 错误处理：默认强制执行
+        print("默认操作: 强制 [执行]")
+        return {
+            "plan": f"JSON解析失败。原始输出: {raw_plan}",
+            "planner_decision": "execute",
+            "messages": [("planner", f"JSON Error: {raw_plan}")]
+        }
+
 
 
 def executor_node(state: AgentState) -> dict:
@@ -147,7 +202,22 @@ def executor_node(state: AgentState) -> dict:
     return {"result": result, "messages": [("executor", result)]}
 
 
-# --- 4. 构建图 (Graph) ---
+# --- 4. 定义条件路由函数 (Router) ---
+def router_node(state: AgentState) -> str:
+    """
+    决策节点：检查规划者的决定，并返回下一个节点的名称。
+    """
+    print("--- 正在进入 [Router] 决策点 ---")
+
+    if state['planner_decision'] == 'execute':
+        print("路由决策: 前往 [Executor]")
+        return "executor"  # 返回节点名称字符串
+    else:
+        print("路由决策: [结束]")
+        return END  # 返回特殊的 END 标记
+
+
+# --- 5. 构建图 (Graph) ---
 
 # 初始化 StateGraph
 workflow = StateGraph(AgentState)
@@ -163,6 +233,17 @@ workflow.set_entry_point("planner")
 # 规划者 -> 执行者
 workflow.add_edge("planner", "executor")
 
+# # 从 "planner" 节点开始，调用 router_node 函数
+# # router_node 函数的返回值（"executor" 或 END）将决定下一步去哪里
+# workflow.add_conditional_edges(
+#     "planner",  # 起始节点
+#     router_node, # 调用的路由函数
+#     {
+#         "executor": "executor", # 如果路由函数返回 "executor", 则转到 "executor" 节点
+#         END: END                # 如果路由函数返回 END, 则结束
+#     }
+# )
+
 # 执行者是最后一个节点
 workflow.add_edge("executor", END)
 
@@ -172,14 +253,34 @@ app = workflow.compile()
 # --- 5. 运行图 ---
 
 if __name__ == "__main__":
-    task = "我应该如何为即将到来的技术面试做准备？请给我一个关于数据结构和算法的学习方向"
+    system_task = "我应该如何为即将到来的技术面试做准备？请给我一个关于数据结构和算法的学习方向"
 
     # LangGraph 支持流式 (stream) 和 批处理 (invoke)
     # 我们使用 invoke 来获取最终结果
 
-    inputs = {"task": task, "messages": [("user", task)]}
+    inputs = {"task": system_task, "messages": [("user", system_task)]}
 
     final_state = app.invoke(inputs)
 
     print("\n--- 最终结果 ---")
     print(final_state['result'])
+
+    # print("======= 测试 1: 复杂任务 (应调用 Executor) =======")
+    # task_complex = "我应该如何为即将到来的技术面试做准备？请给我一个关于数据结构和算法的学习计划。"
+    # inputs_complex = {"task": task_complex, "messages": [("user", task_complex)]}
+    #
+    # final_state_complex = app.invoke(inputs_complex)
+    #
+    # print("\n--- 复杂任务的最终结果 ---")
+    # print(final_state_complex['result'])
+    #
+    # print("\n" + "=" * 30 + "\n")
+    #
+    # print("======= 测试 2: 简单任务 (应直接结束) =======")
+    # task_simple = "今天星期几？"
+    # inputs_simple = {"task": task_simple, "messages": [("user", task_simple)]}
+    #
+    # final_state_simple = app.invoke(inputs_simple)
+    #
+    # print("\n--- 简单任务的最终结果 ---")
+    # print(final_state_simple['result'])
