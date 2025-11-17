@@ -105,16 +105,22 @@ def planner_node(state: AgentState) -> dict:
     task = state['task']
     context = state['dynamic_context']  # <--- 获取实时数据
 
+    # system_message = (
+    #     "你是一个自主决策AI。你的目标是分析实时数据，并决定是否需要详细执行，还是可以直接给出决策。\n"
+    #     "你必须以 JSON 格式输出你的决定。\n"
+    #     '1. (复杂决策): {"action": "execute", "plan": "执行步骤..."}\n'
+    #     '2. (简单决策): {"action": "end", "answer": "决策结果..."}\n'
+    #     "现在测试功能，请只输出复杂决策"
+    # )
+
     system_message = (
-        "你是一个自主决策AI。你的目标是分析实时数据，并决定是否需要详细执行，还是可以直接给出决策。\n"
-        "你必须以 JSON 格式输出你的决定。\n"
-        '1. (复杂决策): {"action": "execute", "plan": "执行步骤..."}\n'
-        '2. (简单决策): {"action": "end", "answer": "决策结果..."}\n'
-        "现在测试功能，请只输出复杂决策"
+        "你是一个经验丰富的战斗机飞行员，能结合当前的状态作出合适的决策\n"
+        "现在我将给你红方和蓝方相对固定坐标系的速度、位置信息，你需要对红方给出一个简明扼要的作战指令，而不是直接输出飞机的运动学控制信息"
+        "你必须严格以 JSON 格式输出你的决定。\n"
+        '{"action": "execute", "plan": "作战指令..."}\n'
     )
 
     user_message = f"""
-    [固定任务]: {task}
     [实时数据]: {context}
 
     请根据上述数据输出你的JSON决策。
@@ -154,13 +160,21 @@ def executor_node(state: AgentState) -> dict:
 
     context_variable = state['dynamic_context']
 
+    # system_message = (
+    #     "你是一个AI执行助手。"
+    #     "严格遵循“计划”，并结合“实时数据”来生成简短决策报告。"
+    # )
+
     system_message = (
-        "你是一个AI执行助手。"
-        "严格遵循“计划”，并结合“实时数据”来生成简短决策报告。"
+        "你是一个飞机控制助手\n"
+        "你需要根据[作战指令]和[实时数据]生成具体的控制飞机信号\n"
+        "你的指令格式是“红方对象”+“动作”+“运动量”，其中红方对象为red1和red2；动作分为turn、updown，分别表示转弯、爬升\下降；当转弯时，运动量为转弯的角度，转弯角度有30 60可选，向左转为正，向右为负，爬升\下降时，运动量为对应z轴位移量，爬升距离仅100可选，上升为正、下降为负。\n"
+        "请严格仿照以下示例生成控制信号\n"
+        "###red1 turn -30 red2 up 100###"
     )
 
     user_message = f"""
-        [遵循的计划]: {plan}
+        [作战指令]: {plan}
         [实时数据]: {context_variable}
 
         请生成最终的决策报告。
@@ -231,15 +245,21 @@ if __name__ == "__main__":
     SLEEP_INTERVAL_SECONDS = 0.5
 
     print(f"--- 启动自主决策系统 ---")
-    print(f"固定任务: {system_task}")
+    # print(f"固定任务: {system_task}")
     print(f"运行间隔: {SLEEP_INTERVAL_SECONDS} 秒")
     while True:
         try:
-            api_data = get_realtime_data_from_api()
+            # api_data = get_realtime_data_from_api()
 
             inputs = {
                 "task": system_task,
-                "dynamic_context": api_data
+                # "dynamic_context": api_data
+                "dynamic_context": "红方:\n"
+            "{'state': {'heading': 0, 'position': (5000.0, 20000.0, 500), 'speed': 200}}\n"
+            "{'state': {'heading': 0, 'position': (5000.0, 35000.0, 500), 'speed': 200}}\n"
+            "蓝方:\n"
+            "{'state': {'heading': 180, 'position': (45000.0, 25000.0, 500), 'speed': 200}}\n"
+            "{'state': {'heading': 180, 'position': (45000.0, 30000.0, 500), 'speed': 200}}\n"
             }
 
             final_state = app.invoke(inputs)
