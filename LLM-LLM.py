@@ -169,8 +169,8 @@ def executor_node(state: AgentState) -> dict:
         "你是一个飞机控制助手\n"
         "你需要根据[作战指令]和[实时数据]生成具体的控制飞机信号\n"
         "你的指令格式是“红方对象”+“动作”+“运动量”，其中红方对象为red1和red2；动作分为turn、updown，分别表示转弯、爬升\下降；当转弯时，运动量为转弯的角度，转弯角度有30 60可选，向左转为正，向右为负，爬升\下降时，运动量为对应z轴位移量，爬升距离仅100可选，上升为正、下降为负。\n"
-        "请严格仿照以下示例生成控制信号\n"
-        "###red1 turn -30 red2 up 100###"
+        "请严格按照以下示例生成控制信号\n"
+        "##red1 turn -30 red2 up 100##\n"
     )
 
     user_message = f"""
@@ -240,17 +240,18 @@ def get_realtime_data_from_api() -> str:
 
 # --- 5. 运行图 ---
 if __name__ == "__main__":
-    system_task = "你是一个股票交易决策器。根据当前的市场状态，决定是'买入', '卖出' 还是 '持有'。"
+    system_task = "作战模拟"
 
     SLEEP_INTERVAL_SECONDS = 0.5
 
     print(f"--- 启动自主决策系统 ---")
     # print(f"固定任务: {system_task}")
     print(f"运行间隔: {SLEEP_INTERVAL_SECONDS} 秒")
+    cnt = 0
     while True:
+        cnt += 1
         try:
             # api_data = get_realtime_data_from_api()
-
             inputs = {
                 "task": system_task,
                 # "dynamic_context": api_data
@@ -277,8 +278,10 @@ if __name__ == "__main__":
             # 5. 等待下一个周期
         time.sleep(SLEEP_INTERVAL_SECONDS)
 
-    print("\n--- 最终结果 ---")
-    print(final_state['result'])
+        print("\n--- 最终结果 ---")
+        print(final_state['result'])
+        if cnt == 5:
+            break
 
     # print("======= 测试 1: 复杂任务 (应调用 Executor) =======")
     # task_complex = "我应该如何为即将到来的技术面试做准备？请给我一个关于数据结构和算法的学习计划。"
