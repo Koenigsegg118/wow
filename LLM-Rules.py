@@ -1,3 +1,5 @@
+# 这里下层改用基于规则的控制器，只是比较简单的规则
+
 import torch
 from transformers import pipeline, AutoTokenizer, AutoModelForCausalLM
 from langgraph.graph import StateGraph, END

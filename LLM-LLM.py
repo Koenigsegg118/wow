@@ -1,3 +1,5 @@
+# 这里是上下层均使用llm的版本，opt微调可能会在这个系统中使用
+
 import torch
 from transformers import pipeline, AutoTokenizer, AutoModelForCausalLM
 from langgraph.graph import StateGraph, END
