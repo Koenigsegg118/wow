@@ -20,6 +20,7 @@ class ChatCompletionRequest(BaseModel):
     temperature: Optional[float] = 0.7
     top_p: Optional[float] = 0.95
     stream: Optional[bool] = False
+    thinking: Optional[bool] = False
 
 
 class ChatCompletionResponseChoice(BaseModel):
@@ -96,7 +97,8 @@ async def chat_completions(request: ChatCompletionRequest):
         prompt = pipe.tokenizer.apply_chat_template(
             messages_list,
             tokenize=False,
-            add_generation_prompt=True
+            add_generation_prompt=True,
+            enable_thinking=request.thinking,
         )
     except Exception as e:
         # 如果 apply_chat_template 失败（某些旧模型），手动拼接
