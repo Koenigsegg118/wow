@@ -205,3 +205,8 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+/models/
+/手册/
+/test.py
+/test_server.py
+/cpt_dataset.jsonl
