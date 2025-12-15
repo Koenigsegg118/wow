@@ -140,7 +140,7 @@ def process_documents(input_dir: str, output_file: str, min_doc_length: int = 10
 if __name__ == "__main__":
     # ----------------------------------------------------
     # TODO: 在这里修改您的输入和输出路径
-    INPUT_DIRECTORY = "./my_documents"  # 包含您的文档的文件夹
+    INPUT_DIRECTORY = "./手册"  # 包含您的文档的文件夹
     OUTPUT_JSONL_FILE = "./cpt_dataset.jsonl"  # 最终的数据集文件
     # ----------------------------------------------------
 
