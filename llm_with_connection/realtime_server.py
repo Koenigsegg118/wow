@@ -81,24 +81,28 @@ def run_socket_server(
                 nonlocal current_plan, last_plan_time_sim, action_timeline
 
                 if has_split:
-                    # 1) Planner 低频刷新 plan
-                    need_refresh_plan = (current_plan is None) or (
-                        sim_time - last_plan_time_sim >= PLANNER_REFRESH_INTERVAL_S
-                    )
-                    if need_refresh_plan:
-                        p_state = app.invoke_planner(base_inputs)
-                        plan = p_state.get("plan")
-                        if isinstance(plan, str) and plan.strip():
-                            current_plan = plan.strip()
-                            last_plan_time_sim = sim_time
-
-                    # 2) 若已有动作覆盖未来一段时间，则不必频繁调用 Executor
+                    # 1) 如果当前还有动作序列正在执行，则“执行窗口内”不调用 Planner（你期望的解耦）
                     with action_lock:
-                        last_end = action_timeline[-1][0] if action_timeline else -1e30
-                    if last_end >= sim_time + EXECUTOR_TARGET_HORIZON_S:
+                        active_end = action_timeline[-1][0] if action_timeline else -1e30
+                    has_active_actions = active_end > sim_time
+
+                    # 2) 若动作已覆盖未来一段时间，则不必频繁调用 Executor（也不必调用 Planner）
+                    if active_end >= sim_time + EXECUTOR_TARGET_HORIZON_S:
                         continue
 
-                    # 3) Executor 基于“缓存 plan”生成下一段动作（可选 steps）
+                    # 3) 仅在“动作序列用尽/过期”时，Planner 才允许刷新 plan（并受 PLANNER_REFRESH_INTERVAL_S 限制）
+                    if (not has_active_actions) and PLANNER_REFRESH_INTERVAL_S > 0:
+                        need_refresh_plan = (current_plan is None) or (
+                            sim_time - last_plan_time_sim >= PLANNER_REFRESH_INTERVAL_S
+                        )
+                        if need_refresh_plan:
+                            p_state = app.invoke_planner(base_inputs)
+                            plan = p_state.get("plan")
+                            if isinstance(plan, str) and plan.strip():
+                                current_plan = plan.strip()
+                                last_plan_time_sim = sim_time
+
+                    # 4) Executor 基于“缓存 plan”生成下一段动作（可选 steps）
                     e_inputs = dict(base_inputs)
                     e_inputs["plan"] = current_plan or "保持编队并自保，必要时规避、占位。"
                     e_state = app.invoke_executor(e_inputs)  # 可能需要 ~5s

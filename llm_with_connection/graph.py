@@ -124,11 +124,26 @@ def build_langgraph_app(
     def router_node(state: AgentState) -> str:
         return "executor" if state["planner_decision"] == "execute" else END
 
+    def gate_router(state: AgentState) -> str:
+        """
+        入口闸门：
+        - 如果上游已经提供了 plan（例如 socket server 缓存/固定 plan），则直接走 executor，不调用 planner
+        - 否则走 planner -> executor
+        """
+        plan = state.get("plan")
+        if isinstance(plan, str) and plan.strip():
+            return "executor"
+        return "planner"
+
     workflow = StateGraph(AgentState)
+    workflow.add_node("gate", lambda state: {})  # 只做路由，不改状态
     workflow.add_node("planner", planner_node)
     workflow.add_node("executor", executor_node)
-    workflow.set_entry_point("planner")
-    workflow.add_conditional_edges("planner", router_node, {"executor": "executor", END: END})
+    workflow.set_entry_point("gate")
+    workflow.add_conditional_edges("gate", gate_router, {"planner": "planner", "executor": "executor"})
+    workflow.add_conditional_edges(
+        "planner", router_node, {"executor": "executor", END: END}
+    )
     workflow.add_edge("executor", END)
 
     # 额外提供 planner-only / executor-only 两个入口，供 socket server 做“上层低频刷新、下层自治执行”解耦。

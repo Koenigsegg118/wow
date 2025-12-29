@@ -25,9 +25,8 @@ from openai_key import OPENAI_API_KEY
 # 你要切换模型/服务器时，改这里就行：
 PLANNER_CLIENT_CFG = {
     "provider": "remote",  # "remote" | "openai"
-    # 强烈建议不要把真实 key 写进代码/仓库里（容易泄露）。
-    # 请改成你自己的加载方式（例如本机私有的 wow/secrets.py 或运行时输入），这里先留占位符。
-    "api_key": PLANNER_API_KEY,
+    # "api_key": PLANNER_API_KEY,
+    "api_key": OPENAI_API_KEY,
     "api_base": PLANNER_API_BASE,
     "model_name": PLANNER_MODEL_NAME,
     # "model_name": "gpt-5.2",
