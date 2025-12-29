@@ -18,7 +18,8 @@ def call_vllm_model(
     max_tokens: int = 1024,
 ) -> str:
     try:
-        response = client.chat.completions.create(
+        # 统一使用 OpenAI 官方参数：max_completion_tokens
+        base_kwargs = dict(
             model=model_name,
             messages=[
                 {"role": "system", "content": system_message},
@@ -26,8 +27,11 @@ def call_vllm_model(
             ],
             temperature=0.7,
             top_p=0.95,
-            max_tokens=max_tokens,
             stream=False,
+        )
+        response = client.chat.completions.create(
+            **base_kwargs,
+            max_completion_tokens=max_tokens,
         )
         return response.choices[0].message.content
     except Exception as e:
@@ -88,10 +92,19 @@ def build_langgraph_app(
         system_message = (
             "你是一个飞机控制助手。根据指令与当前态势，只为红方两架飞机输出控制增量。\n"
             "必须严格输出 JSON（不要输出多余文字/代码块/解释）。\n"
-            "JSON 格式固定为：\n"
+            "你可以输出【单步动作】或【短动作序列】两种格式（二选一）：\n"
+            "1) 单步动作：\n"
             "{\n"
             '  "red_1": {"turn_deg": <float>, "up_m": <float>, "dspeed_mps": <float>},\n'
-            '  "red_2": {"turn_deg": <float>, "up_m": <float>, "dspeed_mps": <float>}\n'
+            '  "red_2": {"turn_deg": <float>, "up_m": <float>, "dspeed_mps": <float>},\n'
+            '  "hold_s": <float, optional>\n'
+            "}\n"
+            "2) 短动作序列（推荐，可让下层在一小段时间内自循环执行，不必上层反复下指令）：\n"
+            "{\n"
+            '  "steps": [\n'
+            '    {"hold_s": <float>, "red_1": {...}, "red_2": {...}},\n'
+            '    {"hold_s": <float>, "red_1": {...}, "red_2": {...}}\n'
+            "  ]\n"
             "}\n"
             "含义：\n"
             "- turn_deg：相对当前航向的变化（单位：度，建议范围 [-45,45]）\n"
@@ -117,4 +130,35 @@ def build_langgraph_app(
     workflow.set_entry_point("planner")
     workflow.add_conditional_edges("planner", router_node, {"executor": "executor", END: END})
     workflow.add_edge("executor", END)
-    return workflow.compile()
+
+    # 额外提供 planner-only / executor-only 两个入口，供 socket server 做“上层低频刷新、下层自治执行”解耦。
+    planner_only = StateGraph(AgentState)
+    planner_only.add_node("planner", planner_node)
+    planner_only.set_entry_point("planner")
+    planner_only.add_edge("planner", END)
+
+    executor_only = StateGraph(AgentState)
+    executor_only.add_node("executor", executor_node)
+    executor_only.set_entry_point("executor")
+    executor_only.add_edge("executor", END)
+
+    full_graph = workflow.compile()
+    planner_graph = planner_only.compile()
+    executor_graph = executor_only.compile()
+
+    class HierarchicalApp:
+        def __init__(self, full, planner, executor):
+            self._full = full
+            self._planner = planner
+            self._executor = executor
+
+        def invoke(self, inputs: dict, **kwargs):
+            return self._full.invoke(inputs, **kwargs)
+
+        def invoke_planner(self, inputs: dict, **kwargs):
+            return self._planner.invoke(inputs, **kwargs)
+
+        def invoke_executor(self, inputs: dict, **kwargs):
+            return self._executor.invoke(inputs, **kwargs)
+
+    return HierarchicalApp(full_graph, planner_graph, executor_graph)

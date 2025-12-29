@@ -16,7 +16,10 @@ class Message(BaseModel):
 class ChatCompletionRequest(BaseModel):
     model: str
     messages: List[Message]
-    max_tokens: Optional[int] = 1024
+    # OpenAI 官方参数：max_completion_tokens
+    # 这里同时兼容旧字段 max_tokens（如果两者都给，优先 max_completion_tokens）。
+    max_completion_tokens: Optional[int] = 1024
+    max_tokens: Optional[int] = None
     temperature: Optional[float] = 0.7
     top_p: Optional[float] = 0.95
     stream: Optional[bool] = False
@@ -109,9 +112,14 @@ async def chat_completions(request: ChatCompletionRequest):
         prompt += "assistant:"
 
     # 3. 推理
+    max_new = (
+        request.max_completion_tokens
+        if request.max_completion_tokens is not None
+        else (request.max_tokens if request.max_tokens is not None else 1024)
+    )
     outputs = pipe(
         prompt,
-        max_new_tokens=request.max_tokens,
+        max_new_tokens=max_new,
         do_sample=True,
         temperature=request.temperature,
         top_p=request.top_p,
