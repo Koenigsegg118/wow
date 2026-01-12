@@ -41,3 +41,22 @@ def translate_sim_data_to_llm_context(time_sim, sim_data_np) -> str:
     except Exception as e:
         return f"Data Error: {str(e)}"
 
+
+def translate_sim_frames_to_llm_context(frames) -> str:
+    """
+    将多帧状态拼接成一个 LLM 上下文字符串（oldest -> newest）。
+
+    frames: list[tuple[float, np.ndarray]] 其中每个元素为 (sim_time, sim_data_np)
+    """
+    if not frames:
+        return "(no frames)"
+
+    out: list[str] = []
+    total = len(frames)
+    for i, (t, data) in enumerate(frames, start=1):
+        out.append(f"[Frame {i}/{total}]")
+        out.append(translate_sim_data_to_llm_context(t, data).strip())
+        if i != total:
+            out.append("")  # blank line between frames
+    return "\n".join(out)
+

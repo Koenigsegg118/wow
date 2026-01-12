@@ -1,5 +1,7 @@
+import os
 import socket
 import threading
+from collections import deque
 from queue import Full, Queue
 
 import numpy as np
@@ -10,10 +12,19 @@ from .config import (
     EXECUTOR_MAX_SEQUENCE_STEPS,
     EXECUTOR_MAX_SEQUENCE_TOTAL_S,
     EXECUTOR_TARGET_HORIZON_S,
+    LLM_CONTEXT_FRAMES,
+    LLM_CONTEXT_MIN_FRAMES,
+    LLM_CONTEXT_STRIDE,
+    LLM_STATE_BUFFER_MAX_FRAMES,
     PLANNER_REFRESH_INTERVAL_S,
 )
-from .sim_translation import translate_sim_data_to_llm_context
-from .socket_protocol import StateReceiver, send_reset_instruction, send_status_data
+from .sim_translation import translate_sim_frames_to_llm_context
+from .socket_protocol import (
+    StateReceiver,
+    send_pull_instruction,
+    send_reset_instruction,
+    send_status_data,
+)
 
 
 def run_socket_server(
@@ -50,7 +61,17 @@ def run_socket_server(
     current_plan: str | None = None
     last_plan_time_sim: float = -1e30
 
+    # 状态环形缓冲（用于“一次性喂 N 帧给大模型”）
+    state_buf: "deque[tuple[float, np.ndarray]]" = deque(maxlen=LLM_STATE_BUFFER_MAX_FRAMES)
+    state_buf_lock = threading.Lock()
+
     state_q: "Queue[tuple[float, np.ndarray]]" = Queue(maxsize=1)
+    # PULL 模式（可选）：
+    # - PULL_BURST_FRAMES > 0: 启用 PULL，每收满 N 帧后再请求下一批（适合“仿真端按需推送”）。
+    # - PULL_BURST_FRAMES <= 0: 禁用 PULL，依赖仿真端连续推送（最低延迟，推荐你的“只要最近10帧”场景）。
+    pull_burst_frames = int(float(os.getenv("PULL_BURST_FRAMES", "0")))
+    use_pull = pull_burst_frames > 0
+    pull_count = 0
 
     def push_latest_state(item) -> None:
         try:
@@ -71,7 +92,28 @@ def run_socket_server(
         while True:
             sim_time, sim_data = state_q.get()
 
-            llm_context = translate_sim_data_to_llm_context(sim_time, sim_data)
+            # 从环形缓冲中截取最近 N 帧（可 stride 降采样），一次性提供给 LLM
+            n = int(LLM_CONTEXT_FRAMES) if int(LLM_CONTEXT_FRAMES) > 0 else 1
+            stride = int(LLM_CONTEXT_STRIDE) if int(LLM_CONTEXT_STRIDE) > 0 else 1
+            min_frames = int(LLM_CONTEXT_MIN_FRAMES) if int(LLM_CONTEXT_MIN_FRAMES) > 0 else 1
+
+            with state_buf_lock:
+                buf_snapshot = list(state_buf)
+
+            # 启动早期/异常时兜底：至少用当前触发帧
+            if not buf_snapshot and sim_data is not None:
+                buf_snapshot = [(sim_time, sim_data)]
+
+            if len(buf_snapshot) < min_frames:
+                continue
+
+            need = n * stride
+            tail = buf_snapshot[-need:] if len(buf_snapshot) > need else buf_snapshot
+            frames_for_llm = tail[::stride]
+            if len(frames_for_llm) > n:
+                frames_for_llm = frames_for_llm[-n:]
+
+            llm_context = translate_sim_frames_to_llm_context(frames_for_llm)
             base_inputs = {"task": system_task, "dynamic_context": llm_context}
 
             try:
@@ -144,11 +186,28 @@ def run_socket_server(
     threading.Thread(target=llm_worker, daemon=True).start()
 
     try:
+        # 若启用 PULL：先请求第一批
+        if use_pull:
+            try:
+                send_pull_instruction(connection)
+            except Exception:
+                pass
+
         while True:
             time_sim, sim_data = receiver.recv_frame(connection)
+            if use_pull:
+                pull_count += 1
 
             if time_sim > reset_time_threshold:
+                with state_buf_lock:
+                    state_buf.clear()
                 send_reset_instruction(connection)
+                if use_pull:
+                    pull_count = 0
+                    try:
+                        send_pull_instruction(connection)
+                    except Exception:
+                        pass
                 continue
 
             with action_lock:
@@ -162,7 +221,17 @@ def run_socket_server(
                     action_to_send = last_action.copy()
 
             send_status_data(connection, action_to_send)
+            with state_buf_lock:
+                state_buf.append((time_sim, sim_data))
             push_latest_state((time_sim, sim_data))
+
+            # 收满一批后，再请求下一批状态帧（Python 全收，LLM 侧用 --context-frames 控制实际喂几帧）
+            if use_pull and pull_count >= pull_burst_frames:
+                pull_count = 0
+                try:
+                    send_pull_instruction(connection)
+                except Exception:
+                    pass
 
     except KeyboardInterrupt:
         print("手动停止")

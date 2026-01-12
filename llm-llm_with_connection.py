@@ -1,18 +1,6 @@
-from llm_with_connection import (
-    EXECUTOR_API_BASE,
-    EXECUTOR_API_KEY,
-    EXECUTOR_MODEL_NAME,
-    HOST,
-    PLANNER_API_BASE,
-    PLANNER_API_KEY,
-    PLANNER_MODEL_NAME,
-    PORT,
-    RESET_TIME_THRESHOLD,
-    SYSTEM_TASK_DEFAULT,
-    build_langgraph_app,
-    create_openai_client,
-    run_socket_server,
-)
+import argparse
+import os
+
 from openai_key import OPENAI_API_KEY
 #
 # ==========================
@@ -23,25 +11,104 @@ from openai_key import OPENAI_API_KEY
 # - "openai": 走 OpenAI 官方 API（忽略 api_base，只用 api_key）
 #
 # 你要切换模型/服务器时，改这里就行：
-PLANNER_CLIENT_CFG = {
-    "provider": "remote",  # "remote" | "openai"
-    # "api_key": PLANNER_API_KEY,
-    "api_key": OPENAI_API_KEY,
-    "api_base": PLANNER_API_BASE,
-    "model_name": PLANNER_MODEL_NAME,
-    # "model_name": "gpt-5.2",
-}
+def _build_arg_parser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(
+        description="AFSIM↔LLM 控制回路：作为 TCP Server 接收状态、快速回包动作、后台慢推理更新动作。",
+    )
 
-EXECUTOR_CLIENT_CFG = {
-    "provider": "openai",  # "remote" | "openai"
-    "api_key": OPENAI_API_KEY,
-    "api_base": EXECUTOR_API_BASE,
-    # "model_name": EXECUTOR_MODEL_NAME,
-    "model_name": "gpt-5.2",
-}
+    # 网络侧（可选覆盖 config.py 的 env 默认值）
+    p.add_argument("--host", type=str, default=None, help="监听地址（默认取环境变量 HOST）")
+    p.add_argument("--port", type=int, default=None, help="监听端口（默认取环境变量 PORT）")
+    p.add_argument(
+        "--reset-time-threshold",
+        type=float,
+        default=None,
+        help="超过该仿真时间触发 RESET（默认取环境变量 RESET_TIME_THRESHOLD）",
+    )
+
+    # 关键：一次性喂给大模型的帧数/采样策略（可运行时控制）
+    p.add_argument(
+        "--context-frames",
+        type=int,
+        default=None,
+        help="一次推理拼接最近 N 帧状态（等价环境变量 LLM_CONTEXT_FRAMES）",
+    )
+    p.add_argument(
+        "--context-stride",
+        type=int,
+        default=None,
+        help="从缓冲抽帧步长（等价环境变量 LLM_CONTEXT_STRIDE）",
+    )
+    p.add_argument(
+        "--context-min-frames",
+        type=int,
+        default=None,
+        help="触发推理前至少需要的帧数（等价环境变量 LLM_CONTEXT_MIN_FRAMES）",
+    )
+    p.add_argument(
+        "--state-buffer-max-frames",
+        type=int,
+        default=None,
+        help="状态环形缓冲最大帧数（等价环境变量 LLM_STATE_BUFFER_MAX_FRAMES）",
+    )
+
+    p.add_argument(
+        "--pull-burst-frames",
+        type=int,
+        default=None,
+        help="每次从仿真端批量接收的帧数（等价环境变量 PULL_BURST_FRAMES；<=0 表示禁用 PULL，最低延迟）",
+    )
+
+    return p
+
+
+def _set_env_if_provided(name: str, value) -> None:
+    if value is None:
+        return
+    os.environ[name] = str(value)
 
 
 def main() -> None:
+    args = _build_arg_parser().parse_args()
+
+    # 先把“运行时可调参数”写入 env，再 import llm_with_connection（其 config.py 会在 import 时读取 env）
+    _set_env_if_provided("HOST", args.host)
+    _set_env_if_provided("PORT", args.port)
+    _set_env_if_provided("RESET_TIME_THRESHOLD", args.reset_time_threshold)
+    _set_env_if_provided("LLM_CONTEXT_FRAMES", args.context_frames)
+    _set_env_if_provided("LLM_CONTEXT_STRIDE", args.context_stride)
+    _set_env_if_provided("LLM_CONTEXT_MIN_FRAMES", args.context_min_frames)
+    _set_env_if_provided("LLM_STATE_BUFFER_MAX_FRAMES", args.state_buffer_max_frames)
+    _set_env_if_provided("PULL_BURST_FRAMES", args.pull_burst_frames)
+
+    from llm_with_connection import (  # runtime import for env override
+        EXECUTOR_API_BASE,
+        HOST,
+        PLANNER_API_BASE,
+        PLANNER_MODEL_NAME,
+        PORT,
+        RESET_TIME_THRESHOLD,
+        SYSTEM_TASK_DEFAULT,
+        build_langgraph_app,
+        create_openai_client,
+        run_socket_server,
+    )
+
+    PLANNER_CLIENT_CFG = {
+        "provider": "remote",  # "remote" | "openai"
+        "api_key": OPENAI_API_KEY,
+        "api_base": PLANNER_API_BASE,
+        "model_name": PLANNER_MODEL_NAME,
+        # "model_name": "gpt-5.2",
+    }
+
+    EXECUTOR_CLIENT_CFG = {
+        "provider": "openai",  # "remote" | "openai"
+        "api_key": OPENAI_API_KEY,
+        "api_base": EXECUTOR_API_BASE,
+        # "model_name": EXECUTOR_MODEL_NAME,
+        "model_name": "gpt-5.2",
+    }
     # 若切到官方 OpenAI，但 key 仍是 EMPTY，则提前报错更友好
     if PLANNER_CLIENT_CFG["provider"].lower() == "openai" and (
         not PLANNER_CLIENT_CFG["api_key"] or PLANNER_CLIENT_CFG["api_key"] == "EMPTY"
