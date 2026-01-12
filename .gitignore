@@ -210,3 +210,6 @@ __marimo__/
 /test_afs_server.py
 /test_llm_server.py
 /cpt_dataset.jsonl
+
+# Secrets / local keys
+/openai_key.py
