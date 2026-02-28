@@ -69,9 +69,7 @@ EXECUTOR_MAX_SEQUENCE_TOTAL_S = _env_f("EXECUTOR_MAX_SEQUENCE_TOTAL_S", 15.0)
 # 多帧上下文（给 LLM 一次性喂多帧状态）
 # =============================
 # 每次推理时，拼接最近 N 帧状态作为 dynamic_context（N=1 表示旧行为：只用最新帧）。
-LLM_CONTEXT_FRAMES = _env_i("LLM_CONTEXT_FRAMES", 1)
-
-# 从缓冲中抽取帧的步长：1=每帧都用；2=隔一帧取一帧（用于降采样/控 token）。
+ LLM_CONTEXT_FRAMES = _env_i("LLM_CONTEXT_FRAMES", 1)# 从缓冲中抽取帧的步长：1=每帧都用；2=隔一帧取一帧（用于降采样/控 token）。
 LLM_CONTEXT_STRIDE = _env_i("LLM_CONTEXT_STRIDE", 1)
 
 # 状态环形缓冲最大容量（单位：帧）。LLM 推理慢时也不会无限涨内存。
