@@ -61,5 +61,11 @@ def send_status_data(connection, action_640_f32: np.ndarray) -> None:
 
 
 def send_reset_instruction(connection) -> None:
-    connection.sendall(b"RESET")
+    # C++ 端使用 6 字节固定前缀并在 '\0' 截断，因此这里补齐到 6 字节
+    connection.sendall(b"RESET\0")
+
+
+def send_pull_instruction(connection) -> None:
+    # 请求 C++ 端发送下一批状态帧（6 字节固定前缀）
+    connection.sendall(b"PULL\0\0")
 
