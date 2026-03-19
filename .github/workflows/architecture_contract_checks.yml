@@ -1,0 +1,29 @@
+name: Architecture And Contract Checks
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - master
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Dependency direction guard
+        run: python tools/check_dependency_direction.py
+
+      - name: Schema change guard
+        run: python tools/check_schema_guard.py
+
+      - name: Artifact schema-version guard
+        run: python tools/check_artifact_schema_version.py

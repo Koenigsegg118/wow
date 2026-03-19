@@ -1,0 +1,40 @@
+{
+  "schema_version": "0.1.1",
+  "backend": "onnxruntime",
+  "model_file": "model.onnx",
+  "obs_spec": {
+    "dim": 8,
+    "seq_len": 20,
+    "field_order": [
+      "x_e_m",
+      "y_n_m",
+      "z_u_m",
+      "vx_e_mps",
+      "vy_n_mps",
+      "vz_u_mps",
+      "heading_rad",
+      "ground_speed_mps"
+    ]
+  },
+  "action_spec": {
+    "dim": 3,
+    "field_order": [
+      "dpsi_rad",
+      "alt_sp_m",
+      "spd_sp_mps"
+    ]
+  },
+  "units": "metric",
+  "coordinate_frame": "ENU",
+  "preprocess": {
+    "normalize_obs": true,
+    "denormalize_action": true,
+    "norm_stats_file": "norm_stats.json"
+  },
+  "input_tensor_names": [
+    "obs_seq"
+  ],
+  "output_tensor_names": [
+    "pred_action_seq"
+  ]
+}

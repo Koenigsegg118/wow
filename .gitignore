@@ -213,3 +213,19 @@ __marimo__/
 
 # Secrets / local keys
 /openai_key.py
+
+# Local workspace tooling
+/.claude/
+/.verifier_tmp/
+
+# Project datasets and generated artifacts
+/artifacts/
+/datasets/
+/reports/
+/tra_data/
+/recommended_train_list.txt
+/bc_transformer_smooth.pt
+/tacview_dt_dataset_smooth.npz
+*.npz
+*.pt
+*.onnx
