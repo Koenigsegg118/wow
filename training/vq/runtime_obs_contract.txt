@@ -1,0 +1,103 @@
+============================================================
+  One-Step Token Policy — Runtime Observation Contract
+  For AFSIM bridge integration (Cursor handoff)
+============================================================
+
+1. MODEL INPUT SHAPE
+--------------------
+  obs_hist : [H, 8]    H = history_len (default 4)
+  prev_token : int64    previous predicted token (BOS=vocab_size for first step)
+
+  The model outputs logits [vocab_size] → argmax → token_id.
+  Token is decoded by frozen VQ-VAE to a 4-step continuous action chunk [4, 3].
+
+2. HISTORY LENGTH
+-----------------
+  H = 4 (default), meaning 4 token-boundary timesteps.
+  Token boundaries occur every `token_steps` raw simulation steps.
+  With token_steps=4 and dt=0.5s, each token spans 2 seconds.
+  H=4 covers the current step + 3 previous steps = 8 seconds of history.
+
+3. HISTORY SAMPLING TIMES
+--------------------------
+  Token boundary times within a simulation window:
+    token 0 → t=0.0s    (raw step 0)
+    token 1 → t=2.0s    (raw step 4)
+    token 2 → t=4.0s    (raw step 8)
+    token 3 → t=6.0s    (raw step 12)
+    token 4 → t=8.0s    (raw step 16)
+
+  For the j-th token decision, history includes obs at:
+    [max(0, j-H+1), ..., j-1, j] × token_steps
+
+  If j < H-1, left-pad with the earliest available observation.
+
+  Example (H=4, j=1):
+    Needed: j-3, j-2, j-1, j = -2, -1, 0, 1
+    Pad:    obs[0], obs[0], obs[0], obs[4]
+                                         ↑ current (anchor)
+
+4. CURRENT-STEP ANCHORED EGO TRANSFORM
+---------------------------------------
+  The anchor point is always the LAST entry in obs_hist (the current step).
+  Let (x₀, y₀, h₀) be the anchor's position and heading.
+
+  For every row in obs_hist [H, 8]:
+
+    Input columns:  [x_e, y_n, z_u, vx_e, vy_n, vz_u, heading, speed]
+    Output columns: [dx', dy', z_u, vx', vy', vz_u, heading', speed]
+
+  Step 1 — Translate position:
+    dx = x_e - x₀
+    dy = y_n - y₀
+
+  Step 2 — Rotate by -h₀ (align current heading to north):
+    dx' =  cos(-h₀) · dx + sin(-h₀) · dy
+    dy' = -sin(-h₀) · dx + cos(-h₀) · dy
+    vx' =  cos(-h₀) · vx_e + sin(-h₀) · vy_n
+    vy' = -sin(-h₀) · vx_e + cos(-h₀) · vy_n
+
+  Step 3 — Heading relative to anchor:
+    heading' = heading - h₀
+
+  Unchanged fields:
+    z_u    (col 2) — absolute altitude (flight envelope constraint)
+    vz_u   (col 5) — vertical velocity
+    speed  (col 7) — horizontal ground speed
+
+  After transform, the anchor row always has:
+    dx'=0, dy'=0, heading'=0, and velocity pointing in the +y direction.
+
+5. NORMALIZATION (after ego transform)
+---------------------------------------
+  obs_normalized = (obs_ego - obs_mean) / obs_std
+
+  obs_mean and obs_std are stored in the policy checkpoint:
+    ckpt["obs_mean"]  — [8] float32
+    ckpt["obs_std"]   — [8] float32
+
+  These are computed from training data AFTER ego transform.
+
+6. RUNTIME EXECUTION ORDER
+---------------------------
+  At each token decision step:
+    1. Collect raw obs for current + H-1 previous token boundaries
+    2. Pad if fewer than H observations available
+    3. Apply ego_transform_current_anchor(obs_hist)
+    4. Normalize: (obs_ego - obs_mean) / obs_std
+    5. Feed [1, H, 8] + prev_token → model → logits
+    6. token = argmax(logits)
+    7. Decode token → VQ-VAE decoder → action_chunk [4, 3]
+    8. Execute action_chunk for the next token_steps simulation steps
+    9. Store token as prev_token for next iteration
+
+7. REFERENCE IMPLEMENTATION
+----------------------------
+  Python reference: training/vq/ego_obs_utils.py
+    - ego_transform_current_anchor()
+    - extract_token_boundary_history()
+
+  These are the canonical implementations. Runtime must produce
+  numerically identical results.
+
+============================================================

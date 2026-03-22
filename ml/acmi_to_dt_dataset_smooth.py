@@ -9,6 +9,13 @@ Obs (metric ENU): [x_e,y_n,z_u,vx_e,vy_n,vz_u,track_angle_rad_unwrapped,ground_s
   track_angle_rad_unwrapped = atan2(vx_east, vy_north), 0=N CW+, continuously unwrapped
   ground_speed_mps = sqrt(vx_east^2 + vy_north^2)  (2-D horizontal only)
 
+Ego-centric transform (applied per window in make_windows):
+  For each window, t=0 position and heading define the local frame:
+    dx = x_e - x_e[0],  dy = y_n - y_n[0]          (origin at window start)
+    Rotate (dx, dy, vx, vy) by -heading[0]           (initial heading → north)
+    heading' = heading - heading[0]                   (relative heading, starts at 0)
+  Result: [dx', dy', z_u, vx', vy', vz_u, heading', speed]
+
 Usage:
   python acmi_to_dt_dataset_smooth.py --in a.acmi b.acmi --out out.npz
 """
@@ -191,11 +198,46 @@ def resample_entity(ent, dt=0.5):
     return dict(id=ent["id"], name=ent["name"], type=ent["type"], coalition=ent["coalition"],
                 t=grid, x=x, y=y, z=z, vx=vx, vy=vy, vz=vz, spd=spd, heading_u=heading_u)
 
+def _ego_transform(obs_win):
+    """Apply ego-centric transform to a single obs window [T, 8].
+
+    Input  cols: [x_e, y_n, z_u, vx_e, vy_n, vz_u, heading_u, speed]
+    Output cols: [dx', dy', z_u, vx', vy', vz_u, heading', speed]
+
+    Translate position to window-start origin, then rotate horizontal
+    components by -heading[0] so the initial heading points north (0).
+    """
+    h0 = obs_win[0, 6]  # initial heading (unwrapped)
+    cos_h = np.cos(-h0)
+    sin_h = np.sin(-h0)
+
+    out = obs_win.copy()
+
+    # 1. position: relative to t=0, then rotate
+    dx = obs_win[:, 0] - obs_win[0, 0]
+    dy = obs_win[:, 1] - obs_win[0, 1]
+    out[:, 0] = cos_h * dx + sin_h * dy
+    out[:, 1] = -sin_h * dx + cos_h * dy
+
+    # 2. velocity: rotate
+    vx = obs_win[:, 3]
+    vy = obs_win[:, 4]
+    out[:, 3] = cos_h * vx + sin_h * vy
+    out[:, 4] = -sin_h * vx + cos_h * vy
+
+    # 3. heading: relative to initial
+    out[:, 6] = obs_win[:, 6] - h0
+
+    # z_u (col 2), vz_u (col 5), speed (col 7) unchanged
+    return out
+
+
 def make_windows(obs, act, seq_len=20, stride=5):
     Xo, Xa = [], []
     for s in range(0, len(obs) - seq_len + 1, stride):
         e = s + seq_len
-        Xo.append(obs[s:e]); Xa.append(act[s:e])
+        obs_win = _ego_transform(obs[s:e])
+        Xo.append(obs_win); Xa.append(act[s:e])
     if not Xo:
         return None, None
     return np.stack(Xo, 0), np.stack(Xa, 0)
