@@ -491,13 +491,22 @@ class BCPolicyServer:
             action[base + 0] = float(turn_deg)
             action[base + 1] = float(alt_cmd)
             action[base + 2] = float(spd_cmd)
+            action[base + 3] = 3.0 * 9.81   # BC policy uses fixed 3G
         return action
 
     # ------------------------------------------------------------------
     # Main loop
     # ------------------------------------------------------------------
 
-    def run(self):
+    def run(self, *, token_shadow=None):
+        """Main loop.
+
+        Args:
+            token_shadow: optional ``TokenShadow`` instance.  When
+                provided, each tick's state and primary action are
+                forwarded to the shadow for read-only observation
+                and logging.  The primary action is never modified.
+        """
         server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         server.bind((self.host, self.port))
         server.listen(5)
@@ -510,6 +519,8 @@ class BCPolicyServer:
                 sim_time, sim_data = self.receiver.recv_frame(conn)
                 self._frames_seen += 1
                 action = self.build_action_frame(sim_data, sim_time=sim_time)
+                if token_shadow is not None:
+                    token_shadow.observe(sim_data, sim_time, action)
                 send_status_data(conn, action)
                 if self._frames_seen <= 3:
                     log(f"[BC] First frames ok: t={sim_time:.2f}, "
@@ -523,6 +534,8 @@ class BCPolicyServer:
         except KeyboardInterrupt:
             log("[BC] Stopped by user.")
         finally:
+            if token_shadow is not None:
+                token_shadow.close()
             conn.close()
             server.close()
 
@@ -592,6 +605,24 @@ def main():
                     help="Accept older schema / legacy .pt checkpoints with "
                     "warnings.  Default is strict mode that rejects any "
                     "artifact missing required 0.2.0 metadata.")
+    # ── token shadow (read-only parallel observer) ──
+    ap.add_argument("--token_shadow", action="store_true",
+                    help="Enable token policy shadow mode: token policy "
+                    "runs in parallel, logs suggested actions, but never "
+                    "affects the primary controller output.")
+    ap.add_argument("--token_policy_ckpt", default="",
+                    help="OneStepTokenBC checkpoint for shadow mode.")
+    ap.add_argument("--token_vq_ckpt", default="",
+                    help="VQ-VAE checkpoint for shadow mode.")
+    ap.add_argument("--token_vocab", default="",
+                    help="Vocab JSON for shadow mode.")
+    ap.add_argument("--token_shadow_indices", default="",
+                    help="Comma-separated platform indices for shadow "
+                    "(default: same as --control_indices).")
+    ap.add_argument("--token_shadow_log",
+                    default="logs/token_shadow.jsonl",
+                    help="JSONL log path for shadow output.")
+    ap.add_argument("--token_device", default="cpu")
     args = ap.parse_args()
 
     artifact_path = Path(args.artifact) if args.artifact else None
@@ -651,7 +682,43 @@ def main():
         strict_dt=args.strict_dt,
         allow_legacy_artifact=args.allow_legacy_artifact,
     )
-    server.run()
+
+    # ── optional token shadow ──
+    token_shadow = None
+    if args.token_shadow:
+        from sim.token_policy_runtime import TokenPolicyRuntime, TokenRuntimeConfig
+        from sim.token_shadow import TokenShadow
+        from sim.token_guardrails import TokenGuardrails
+
+        shadow_indices = (
+            _parse_indices(args.token_shadow_indices)
+            if args.token_shadow_indices
+            else _parse_indices(args.control_indices)
+        )
+
+        tok_defaults = {
+            "policy_ckpt": str(_ROOT_DIR / "checkpoints"
+                               / "onestep_token_bc_t4_cb64_h4" / "best.pt"),
+            "vq_ckpt": str(_ROOT_DIR / "checkpoints"
+                           / "vqvae_clean_t4_cb64" / "best.pt"),
+            "vocab": str(_ROOT_DIR / "datasets"
+                         / "dt2hz_H2s_vqclean_t4_cb64_tok.vocab.json"),
+        }
+        tok_runtime = TokenPolicyRuntime(TokenRuntimeConfig(
+            policy_ckpt=args.token_policy_ckpt or tok_defaults["policy_ckpt"],
+            vq_ckpt=args.token_vq_ckpt or tok_defaults["vq_ckpt"],
+            vocab_json=args.token_vocab or tok_defaults["vocab"],
+            device=args.token_device,
+        ))
+        token_shadow = TokenShadow(
+            runtime=tok_runtime,
+            control_indices=shadow_indices,
+            log_path=args.token_shadow_log,
+            guardrails=TokenGuardrails(),
+        )
+        log("[BC] Token shadow module loaded and active.")
+
+    server.run(token_shadow=token_shadow)
 
 
 if __name__ == "__main__":

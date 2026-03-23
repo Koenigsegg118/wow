@@ -101,10 +101,18 @@ def side_from_props(props):
     return "unknown"
 
 
+_IDENTITY_KEYS = ("Name", "Type", "Coalition", "Country", "Group", "Color", "Pilot")
+
+
+def _identity_tuple(obj):
+    return tuple(obj.get(k, "") for k in _IDENTITY_KEYS) + (obj.get("side", "unknown"),)
+
+
 def parse_acmi_objects_and_tracks(lines, start_idx):
     t = 0.0
     objects = {}
     tracks = {}
+    state_by_raw_oid = {}
     for idx in range(start_idx, len(lines)):
         raw = lines[idx].strip()
         if not raw:
@@ -125,7 +133,7 @@ def parse_acmi_objects_and_tracks(lines, start_idx):
         parts = raw.split(",")
         if len(parts) < 2:
             continue
-        oid = parts[0].strip()
+        raw_oid = parts[0].strip()
         props = {}
         for kv in parts[1:]:
             if "=" not in kv:
@@ -133,11 +141,53 @@ def parse_acmi_objects_and_tracks(lines, start_idx):
             k, v = kv.split("=", 1)
             props[k.strip()] = v.strip()
 
-        obj = objects.setdefault(oid, {})
-        for k in ("Name", "Type", "Coalition", "Country", "Group", "Color", "Pilot"):
-            if k in props:
-                obj[k] = props[k]
-        obj["side"] = side_from_props(obj)
+        state = state_by_raw_oid.get(raw_oid)
+        if state is None:
+            oid = raw_oid
+            obj = {"source_id": raw_oid, "segment_index": 1}
+            objects[oid] = obj
+            tracks.setdefault(oid, [])
+            state = {
+                "oid": oid,
+                "segment_index": 1,
+                "identity": None,
+            }
+            state_by_raw_oid[raw_oid] = state
+        else:
+            oid = state["oid"]
+            obj = objects[oid]
+
+        has_identity_update = any(k in props for k in _IDENTITY_KEYS)
+        if has_identity_update:
+            candidate = dict(obj)
+            for k in _IDENTITY_KEYS:
+                if k in props:
+                    candidate[k] = props[k]
+            candidate["side"] = side_from_props(candidate)
+            candidate_identity = _identity_tuple(candidate)
+
+            if state["identity"] is not None and candidate_identity != state["identity"] and len(tracks.get(oid, [])) > 0:
+                state["segment_index"] += 1
+                oid = f"{raw_oid}__seg{state['segment_index']}"
+                obj = {
+                    "source_id": raw_oid,
+                    "segment_index": state["segment_index"],
+                }
+                objects[oid] = obj
+                tracks.setdefault(oid, [])
+                state["oid"] = oid
+
+            for k in _IDENTITY_KEYS:
+                if k in props:
+                    obj[k] = props[k]
+            obj["side"] = side_from_props(obj)
+            state["identity"] = _identity_tuple(obj)
+        else:
+            obj.setdefault("source_id", raw_oid)
+            obj.setdefault("segment_index", state["segment_index"])
+            obj["side"] = side_from_props(obj)
+            if state["identity"] is None:
+                state["identity"] = _identity_tuple(obj)
 
         if "T" in props:
             vals = props["T"].split("|")
@@ -250,6 +300,8 @@ def build_manifest(objects, tracks):
         group = obj.get("Group", "") or "__ungrouped__"
         item = {
             "id": oid,
+            "source_id": obj.get("source_id", oid),
+            "segment_index": obj.get("segment_index", 1),
             "name": obj.get("Name", oid),
             "group": group,
             "type": obj.get("Type", ""),
@@ -277,15 +329,35 @@ def parse_slot_map(items):
 
 def resolve_slot_target(spec, default_group):
     if "/" in spec:
-        group, name = spec.split("/", 1)
-        return group.strip(), name.strip()
+        group, selector = spec.split("/", 1)
+        return group.strip(), selector.strip()
     return default_group, spec.strip()
+
+
+def infer_slot_side(slot):
+    if slot.startswith("blue_"):
+        return "blue"
+    if slot.startswith("red_"):
+        return "red"
+    raise SystemExit(f"Only blue_* or red_* slots are supported now: {slot}")
 
 
 def select_object(manifest, side, group, name):
     side_data = manifest.get(side, {})
     cand = side_data.get(group, [])
     if not cand:
+        return None
+    if name.lower().startswith("id:"):
+        target_id = name.split(":", 1)[1].strip().lower()
+        for item in cand:
+            if item["id"].lower() == target_id:
+                return item["id"]
+        return None
+    if name.lower().startswith("pilot:"):
+        target_pilot = name.split(":", 1)[1].strip().lower()
+        for item in cand:
+            if item.get("pilot", "").lower() == target_pilot:
+                return item["id"]
         return None
     if name == "*":
         return cand[0]["id"]
@@ -402,6 +474,8 @@ def resample_track(pts, dt, trim_speed_mps=50.0):
         "heading": heading,
         "pitch": pitch_i,
         "roll": roll_i,
+        "source_start_time": t_offset,
+        "source_end_time": t_offset + t1,
     }
 
 
@@ -439,7 +513,8 @@ def main():
     ap.add_argument("--acmi", required=True)
     ap.add_argument("--outdir", required=True)
     ap.add_argument("--dt", type=float, default=0.05)
-    ap.add_argument("--map", nargs="*", default=[], help="slot mapping, e.g. blue_1=BLUE-GROUP/F-16C_50")
+    ap.add_argument("--map", nargs="*", default=[],
+                    help="slot mapping, e.g. blue_1=BLUE-GROUP/F-16C_50 red_1=RED-GROUP/id:10b blue_2=BLUE-GROUP/pilot:Blue-1")
     ap.add_argument("--blue-group", default="", help="default group for map values without group/")
     ap.add_argument("--list-only", action="store_true")
     ap.add_argument("--trim-speed", type=float, default=50.0,
@@ -483,22 +558,22 @@ def main():
 
     slot_map = parse_slot_map(args.map)
     if not slot_map:
-        raise SystemExit("No --map provided. Use --list-only first or pass --map blue_1=GROUP/NAME blue_2=GROUP/NAME")
+        raise SystemExit("No --map provided. Use --list-only first or pass --map blue_1=GROUP/NAME red_1=GROUP/NAME")
 
     selected = {}
     for slot, spec in slot_map.items():
-        if not slot.startswith("blue_"):
-            raise SystemExit(f"Only blue slots are supported now: {slot}")
+        side = infer_slot_side(slot)
         group, name = resolve_slot_target(spec, args.blue_group)
         if not group:
             raise SystemExit(f"Missing group in mapping '{slot}={spec}'. Use GROUP/NAME or --blue-group.")
-        oid = select_object(manifest, "blue", group, name)
+        oid = select_object(manifest, side, group, name)
         if oid is None:
-            raise SystemExit(f"Cannot find blue object for slot={slot}, group={group}, name={name}")
-        selected[slot] = oid
+            raise SystemExit(f"Cannot find {side} object for slot={slot}, group={group}, name={name}")
+        selected[slot] = {"id": oid, "side": side}
 
     export_meta = {"acmi": str(acmi), "dt": args.dt, "slots": {}}
-    for slot, oid in selected.items():
+    for slot, sel in selected.items():
+        oid = sel["id"]
         pts = tracks.get(oid, [])
         rs = resample_track(pts, args.dt, trim_speed_mps=args.trim_speed)
         if rs is None:
@@ -510,19 +585,24 @@ def main():
         obj = objects.get(oid, {})
         export_meta["slots"][slot] = {
             "id": oid,
+            "source_id": obj.get("source_id", oid),
+            "segment_index": obj.get("segment_index", 1),
+            "side": sel["side"],
             "name": obj.get("Name", oid),
             "group": obj.get("Group", ""),
             "type": obj.get("Type", ""),
             "coalition": obj.get("Coalition", ""),
             "color": obj.get("Color", ""),
             "n_points": len(rs["t"]),
+            "source_start_time": float(rs["source_start_time"]),
+            "source_end_time": float(rs["source_end_time"]),
             "tspi_file": str(tspi_path),
             "csv_file": str(csv_path),
         }
         print(f"[OK] {slot}: {tspi_path}")
 
     (outdir / "export_meta.json").write_text(json.dumps(export_meta, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(f"[DONE] exported {len(selected)} blue TSPI tracks.")
+    print(f"[DONE] exported {len(selected)} TSPI tracks.")
 
 
 if __name__ == "__main__":
