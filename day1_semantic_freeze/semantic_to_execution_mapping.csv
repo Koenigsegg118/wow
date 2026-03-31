@@ -1,0 +1,10 @@
+semantic_state,token_family_bias,profile_hint,constraints,priority,notes
+commit_intercept,"sustain|mild_climb|mild_right_turn|mild_left_turn",p6dof_semantic,"prefer_energy_preserve=true,allow_aggressive_turn=false",high,"远距接敌; token偏向直飞或浅转弯+加速; 保持能量以备后续交战"
+hold_geometry,"sustain|mild_climb|mild_descend",p6dof_semantic,"prefer_energy_preserve=true,allow_aggressive_turn=false",medium,"维持当前阵位; 以sustain(T19)为主; 允许轻微高度调整"
+press_attack,"moderate_right_turn|moderate_left_turn|descend|right_turn_descend|left_turn_descend",p6dof_semantic,"prefer_energy_preserve=false,allow_aggressive_turn=false",high,"中近距积极进入; 中等转弯修正方向; 可俯冲换速; 不需要极端bank角"
+extend,"sustain|mild_climb|climb",p6dof_semantic,"prefer_energy_preserve=true,allow_aggressive_turn=false,should_abort_if_threatened=true",high,"脱离拉开; 直飞加速为主; climb恢复势能; 受威胁时可能需要切defensive_break"
+support,"mild_right_turn|mild_left_turn|sustain",p6dof_semantic,"prefer_energy_preserve=true,must_support_teammate=true",medium,"支援友机; 浅转弯调整相对位置; 保持能量; 避免卷入直接交战"
+merge_entry,"moderate_right_turn|moderate_left_turn|right_turn_descend|left_turn_descend",auto,"prefer_energy_preserve=false,allow_aggressive_turn=true",high,"进入近距; 转弯+高度变化建立BFM初始条件; 可能需要aggressive_turn profile"
+offensive_turn,"hard_left_turn|hard_right_turn|moderate_left_turn|moderate_right_turn",p6dof_aggressive_turn,"prefer_energy_preserve=false,allow_aggressive_turn=true",high,"攻击性转弯; 大bank角争夺角度; 推荐aggressive_turn以维持高度; 接受速度损失"
+defensive_break,"hard_left_turn|hard_right_turn|steep_descend|hard_left_turn_descend|right_turn_steep_descend|left_turn_steep_descend",p6dof_aggressive_turn,"prefer_energy_preserve=false,allow_aggressive_turn=true,should_abort_if_threatened=false",critical,"防御急转; 使用最大bank角+俯冲; 生存优先; 牺牲能量换角度; T11/T28/T24/T27等激进token"
+energy_manage,"climb|descend|steep_descend|mild_climb|mild_descend",p6dof_semantic,"prefer_energy_preserve=true,allow_aggressive_turn=false",low,"纯能量调整; 无战术机动; 爬升/俯冲换能量; 使用semantic profile保留token高度语义"

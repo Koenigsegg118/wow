@@ -1,0 +1,102 @@
+{
+  "schema_version": "semantic_record_v1",
+  "sample_id": "mixed_manual_demo_001",
+  "source": {
+    "platform": "mixed",
+    "type": "mixed",
+    "scenario_id": "2v2_bvr_001.acmi",
+    "episode_id": "ep01",
+    "timestamp_sec": 45.0,
+    "annotator": "human_plus_afsim_rule",
+    "tool": "mixed_manual_example"
+  },
+  "obs": {
+    "ego": {
+      "runtime_id": "0xA1",
+      "callsign": "Viper1",
+      "coalition": "red",
+      "speed_mps": 350,
+      "altitude_m": 8000,
+      "heading_deg": 90,
+      "pitch_deg": -1.2,
+      "roll_deg": null,
+      "vertical_speed_mps": -3.5,
+      "pos_east_m": 25000,
+      "pos_north_m": 40000,
+      "energy_state": "high"
+    },
+    "enemy": {
+      "target_ref": "enemy_1",
+      "target_runtime_id": "0xB1",
+      "callsign": "Eagle1",
+      "range_m": 45000,
+      "bearing_deg": 5,
+      "aspect_deg": 170,
+      "closure_mps": -250,
+      "alt_diff_m": 200,
+      "is_primary_threat": true
+    },
+    "ally": {
+      "ally_ref": "ally_1",
+      "ally_runtime_id": "0xA2",
+      "callsign": "Viper2",
+      "range_m": 3000,
+      "bearing_deg": -30,
+      "is_supporting": true
+    },
+    "engagement": {
+      "is_merge": false,
+      "is_defensive": false,
+      "has_shot_opportunity": null
+    },
+    "history": {
+      "prev_semantic_state": null,
+      "prev_token_family": null,
+      "prev_target_ref": null
+    }
+  },
+  "label": {
+    "semantic_state": "commit_intercept",
+    "target_ref": "enemy_1",
+    "role": "engaged",
+    "constraints": {
+      "prefer_energy_preserve": true,
+      "allow_aggressive_turn": false,
+      "must_support_teammate": false,
+      "should_abort_if_threatened": true
+    },
+    "profile_hint": "p6dof_semantic",
+    "event_flags": {
+      "target_switch": false
+    },
+    "rationale_short": "远距迎面接近, 高接近率, 保持能量直飞接敌"
+  },
+  "evidence": {
+    "rule_ids": [
+      "AIR001"
+    ],
+    "acmi_refs": [
+      "2v2_bvr_001.acmi:0xA1:45.0"
+    ],
+    "frame_refs": [],
+    "notes": "Manual obs with rule-informed semantic cross-check."
+  },
+  "quality": {
+    "tier": "silver",
+    "confidence": 0.9,
+    "needs_review": false,
+    "conflict_flag": false
+  },
+  "extras": {
+    "raw_object_ids": {
+      "ego": "0xA1",
+      "enemy_1": "0xB1",
+      "ally_1": "0xA2"
+    },
+    "raw_tags": [
+      "source:manual",
+      "source:afsim_rule"
+    ],
+    "weapon_event_refs": null
+  }
+}

@@ -1,0 +1,93 @@
+{
+  "schema_version": "semantic_record_v1",
+  "sample_id": "afsim_rule_HC001_commit_boundary_1p2x",
+  "source": {
+    "platform": "manual",
+    "type": "afsim_rule",
+    "scenario_id": "HC001_commit_boundary_1p2x",
+    "episode_id": "hard_case",
+    "timestamp_sec": null,
+    "annotator": "afsim_rule_adapter",
+    "tool": "afsim_rule_to_semantic_record.py"
+  },
+  "obs": {
+    "ego": {
+      "runtime_id": null,
+      "callsign": null,
+      "coalition": null,
+      "speed_mps": null,
+      "altitude_m": null,
+      "heading_deg": null,
+      "pitch_deg": null,
+      "roll_deg": null,
+      "vertical_speed_mps": null,
+      "pos_east_m": null,
+      "pos_north_m": null,
+      "energy_state": null
+    },
+    "enemy": {
+      "target_ref": "enemy_1",
+      "target_runtime_id": null,
+      "callsign": null,
+      "range_m": null,
+      "bearing_deg": null,
+      "aspect_deg": null,
+      "closure_mps": null,
+      "alt_diff_m": null,
+      "is_primary_threat": null
+    },
+    "ally": null,
+    "engagement": {
+      "is_merge": false,
+      "is_defensive": false,
+      "has_shot_opportunity": null
+    },
+    "history": {
+      "prev_semantic_state": null,
+      "prev_token_family": null,
+      "prev_target_ref": null
+    }
+  },
+  "label": {
+    "semantic_state": "commit_intercept",
+    "target_ref": "enemy_1",
+    "role": "engaged",
+    "constraints": {
+      "prefer_energy_preserve": null,
+      "allow_aggressive_turn": null,
+      "must_support_teammate": null,
+      "should_abort_if_threatened": false
+    },
+    "profile_hint": null,
+    "event_flags": {
+      "target_switch": null
+    },
+    "rationale_short": "AIR001 mapped OBFM_WEZ_commit -> commit_intercept"
+  },
+  "evidence": {
+    "rule_ids": [
+      "AIR001",
+      "AIR004"
+    ],
+    "acmi_refs": [],
+    "frame_refs": [
+      "HC001_commit_boundary_1p2x"
+    ],
+    "notes": "required_fields=mission_type,rng_cls_hst_m,rng_cls_sam_m,rule_type | perturb_knobs=rng_cls_hst_ratio,sensor_noise_m,commit_rng_scale | metric=semantic_switch_accuracy@commit_boundary | use=adversary_train"
+  },
+  "quality": {
+    "tier": "bronze",
+    "confidence": null,
+    "needs_review": true,
+    "conflict_flag": true
+  },
+  "extras": {
+    "raw_object_ids": null,
+    "raw_tags": [
+      "dataset:hard_case",
+      "legacy_semantic_state:OBFM_WEZ_commit",
+      "template_id:HC001_commit_boundary_1p2x"
+    ],
+    "weapon_event_refs": null
+  }
+}

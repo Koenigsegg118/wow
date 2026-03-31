@@ -2,6 +2,15 @@
 # -*- coding: utf-8 -*-
 """BC policy socket server for AFSIM 2v2_p6dof_bc scenario.
 
+AFSIM SCENARIOS (TCP client -> this server, default localhost:65432)
+------------------------------------------------------------------
+Primary: ``build/demos/air_to_air/scenarios/2v2_p6dof_bc.txt`` (also selectable
+via ``2v2_bc_transformer.txt`` with ``SCNRIO 2v2_p6dof_bc``).
+Also used with: ``2v2_bc_close.txt`` -> ``2v2_p6dof_bc_close.txt``,
+``2v2_tspi_blue.txt`` when BC controls the red P6DOF platforms.
+Optional ``--token_shadow`` loads ``token_shadow`` for read-only token comparison
+(same scenes). Full mapping: ``docs/MIGRATION_HANDOFF.md`` §4.1.
+
 Input frame from AFSIM (text tokens):
   simTime 640 [80 platforms * 8 values]
 Per-platform state values:

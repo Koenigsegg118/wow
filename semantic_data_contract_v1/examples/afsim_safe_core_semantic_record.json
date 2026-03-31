@@ -1,0 +1,95 @@
+{
+  "schema_version": "semantic_record_v1",
+  "sample_id": "afsim_rule_sft_001",
+  "source": {
+    "platform": "mixed",
+    "type": "afsim_rule",
+    "scenario_id": "rultype_change.txt",
+    "episode_id": "train",
+    "timestamp_sec": null,
+    "annotator": "afsim_rule_adapter",
+    "tool": "afsim_rule_to_semantic_record.py"
+  },
+  "obs": {
+    "ego": {
+      "runtime_id": null,
+      "callsign": null,
+      "coalition": null,
+      "speed_mps": null,
+      "altitude_m": null,
+      "heading_deg": null,
+      "pitch_deg": null,
+      "roll_deg": null,
+      "vertical_speed_mps": null,
+      "pos_east_m": null,
+      "pos_north_m": null,
+      "energy_state": null
+    },
+    "enemy": {
+      "target_ref": "enemy_1",
+      "target_runtime_id": null,
+      "callsign": null,
+      "range_m": null,
+      "bearing_deg": null,
+      "aspect_deg": null,
+      "closure_mps": null,
+      "alt_diff_m": null,
+      "is_primary_threat": null
+    },
+    "ally": null,
+    "engagement": {
+      "is_merge": false,
+      "is_defensive": false,
+      "has_shot_opportunity": null
+    },
+    "history": {
+      "prev_semantic_state": null,
+      "prev_token_family": null,
+      "prev_target_ref": null
+    }
+  },
+  "label": {
+    "semantic_state": "commit_intercept",
+    "target_ref": "enemy_1",
+    "role": "engaged",
+    "constraints": {
+      "prefer_energy_preserve": false,
+      "allow_aggressive_turn": true,
+      "must_support_teammate": false,
+      "should_abort_if_threatened": false
+    },
+    "profile_hint": "p6dof_semantic",
+    "event_flags": {
+      "target_switch": null
+    },
+    "rationale_short": "AIR001 mapped OBFM_WEZ_commit -> commit_intercept | keep current high-priority threat"
+  },
+  "evidence": {
+    "rule_ids": [
+      "AIR001"
+    ],
+    "acmi_refs": [],
+    "frame_refs": [
+      "sft_001",
+      "rultype_change.txt"
+    ],
+    "notes": "keep current high-priority threat | legacy_profile_hint=turn_hot_from_route_orbit | decision=change_rultype(..., \"ftr\", \"Approaching commit range\") | cooldown=recovery back to route needs >1.75*COMMIT_RNG | split=train | ego.rule_type=route; ego.mission_type=DCA; enemy.nearest_air_range_m=1.18*COMMIT_RNG; enemy.nearest_sam_range_m=large; ally.protected_entity_threatened=False; weapons.flight_guiding=False; geometry.rng_cls_trk_relation=below_1.2_commit"
+  },
+  "quality": {
+    "tier": "bronze",
+    "confidence": 0.82,
+    "needs_review": false,
+    "conflict_flag": false
+  },
+  "extras": {
+    "raw_object_ids": null,
+    "raw_tags": [
+      "dataset:safe_core",
+      "legacy_semantic_state:OBFM_WEZ_commit",
+      "legacy_profile_hint:turn_hot_from_route_orbit",
+      "legacy_quality_tag:safe_core",
+      "rule_scope:maneuver_selection"
+    ],
+    "weapon_event_refs": null
+  }
+}

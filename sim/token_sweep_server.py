@@ -6,6 +6,13 @@ Connects to AFSIM via the standard SAC_PROCESSOR socket protocol and
 tests dense tokens by decoding them through VQ-VAE and sending the
 resulting actions to AFSIM.
 
+AFSIM SCENARIOS (same protocol as token_bridge_server; default port 65432)
+-------------------------------------------------------------------------
+Any scene with ``SAC_PROCESSOR`` and compatible action layout works.
+Common: ``build/demos/air_to_air/2v2_model_only.txt``,
+``2v2_kinematic_model_only.txt``, ``2v2_bc_close.txt``, ``2v2_tspi_blue.txt``.
+Full table: ``docs/MIGRATION_HANDOFF.md`` §4.1.
+
 EXPERIMENT MODES (--exec_mode × --g_mode)
 ------------------------------------------
 6 combinations:
@@ -54,6 +61,7 @@ if str(_ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(_ROOT_DIR))
 
 from training.vq.vqvae_model import ActionChunkVQVAE
+from sim.p6dof_profiles import PROFILES, DEFAULT_PROFILE, get_profile
 
 EARTH_R = 6378137.0
 GRAVITY = 9.81
@@ -69,6 +77,19 @@ class ExecMode(Enum):
 class GMode(Enum):
     FIXED = "fixed"
     DYNAMIC = "dynamic"
+
+
+class LateralMode(Enum):
+    HEADING_FRACTION = 0    # current: TurnToRelativeHeading(fractional dpsi)
+    HEADING_LOOKAHEAD = 1   # new: TurnToRelativeHeading(full dpsi)
+    ROLL_FROM_TOKEN = 2     # new: SetAutopilotRollAngle(phi_cmd)
+
+
+class VerticalMode(Enum):
+    ALT_HOLD = 0        # GoToAltitude (current default)
+    GLOAD_FF = 1        # SetPitchGLoad(1/cos(phi)) for level-turn feedforward
+    VERT_SPEED = 2      # SetAutopilotVerticalSpeed(vz from token dalt)
+    GLOAD_FF_VZ = 3     # SetPitchGLoad(1/cos(phi)) + vertical speed blending
 
 
 # ── AFSIM socket protocol ────────────────────────────────────
@@ -239,6 +260,9 @@ class TokenSweepServer:
         g_fixed: float = 3.0,
         g_max: float = 7.0,
         h_action_sec: float = 2.0,
+        lateral_mode: LateralMode = LateralMode.HEADING_FRACTION,
+        vertical_mode: VerticalMode = VerticalMode.ALT_HOLD,
+        bank_angle_max: float = 60.0,
         host: str = "localhost",
         port: int = 65432,
         log_path: str = "logs/token_sweep.jsonl",
@@ -258,6 +282,9 @@ class TokenSweepServer:
         self.g_fixed = g_fixed
         self.g_max = g_max
         self.h_action_sec = h_action_sec
+        self.lateral_mode = lateral_mode
+        self.vertical_mode = vertical_mode
+        self.bank_angle_max = bank_angle_max
         self.host = host
         self.port = port
         self.settle_ticks = settle_ticks
@@ -284,6 +311,9 @@ class TokenSweepServer:
         log(f"[SWEEP] G mode: {g_mode.value} "
             f"(fixed={g_fixed:.1f}G, max={g_max:.1f}G)")
         log(f"[SWEEP] H_action_sec: {h_action_sec:.2f}s")
+        log(f"[SWEEP] Lateral mode: {lateral_mode.name} ({lateral_mode.value})")
+        log(f"[SWEEP] Vertical mode: {vertical_mode.name} ({vertical_mode.value})")
+        log(f"[SWEEP] Bank angle max: {bank_angle_max:.0f} deg")
         log(f"[SWEEP] Testing tokens: {self.sorted_tokens}")
         log(f"[SWEEP] Settle ticks: {settle_ticks}")
         log(f"[SWEEP] Control indices: {control_indices}")
@@ -414,16 +444,29 @@ class TokenSweepServer:
                         is_task_reset = False
                         event = "settle"
 
+                    # full lookahead delta (degrees) for modes 1 & 2
+                    full_dpsi_deg = math.degrees(dpsi_raw)
+
                     base = 8 * idx
                     action[base + 0] = float(turn_deg)
                     action[base + 1] = float(alt_cmd)
                     action[base + 2] = float(spd_cmd)
                     action[base + 3] = float(g_cmd_mps2)
+                    action[base + 4] = float(full_dpsi_deg)
+                    action[base + 5] = float(self.lateral_mode.value)
+                    action[base + 6] = float(self.bank_angle_max)
+                    action[base + 7] = float(self.vertical_mode.value)
 
                     psi_dot_deg_s = math.degrees(psi_dot)
                     theory_rate = max_turn_rate_at_g(current_spd, n_cmd)
 
                     self.logger.write({
+                        "lateral_mode": self.lateral_mode.value,
+                        "lateral_mode_name": self.lateral_mode.name,
+                        "vertical_mode": self.vertical_mode.value,
+                        "vertical_mode_name": self.vertical_mode.name,
+                        "bank_angle_max": self.bank_angle_max,
+                        "full_dpsi_deg": round(full_dpsi_deg, 4),
                         "sim_time": sim_time,
                         "event": event,
                         "dense_token": current_dense,
@@ -557,6 +600,24 @@ def main():
                     help="Maximum G-load cap (default: 7.0)")
     ap.add_argument("--h_action_sec", type=float, default=2.0,
                     help="Action lookahead horizon in seconds (default: 2.0)")
+    ap.add_argument("--profile", type=str, default=None,
+                    choices=list(PROFILES.keys()),
+                    help="P6DOF control profile (sets lateral/vertical/bank defaults). "
+                         f"Available: {', '.join(PROFILES.keys())}. "
+                         "Individual --lateral_mode/--vertical_mode/--bank_angle_max "
+                         "override the profile values if specified.")
+    ap.add_argument("--lateral_mode", type=int, default=None,
+                    choices=[0, 1, 2],
+                    help="Lateral adapter mode: 0=heading_fraction, "
+                         "1=heading_lookahead, 2=roll_from_token")
+    ap.add_argument("--bank_angle_max", type=float, default=None,
+                    help="Runtime bank angle limit sent to AFSIM")
+    ap.add_argument("--vertical_mode", type=int, default=None,
+                    choices=[0, 1, 2, 3],
+                    help="Vertical adapter mode: 0=alt_hold, 1=gload_feedforward, "
+                         "2=vert_speed_from_token, 3=gload_ff+vz")
+    ap.add_argument("--list_tokens", action="store_true",
+                    help="Print decoded dpsi for all tokens and exit")
     args = ap.parse_args()
 
     indices = [int(t.strip()) for t in args.control_indices.split(",") if t.strip()]
@@ -566,6 +627,31 @@ def main():
 
     vqvae, dense_to_raw, token_steps, act_mean, act_std, norm, dev = \
         load_decoder(args.vq_ckpt, args.vocab, args.device)
+
+    # ── list-tokens mode: print all token dpsi and exit ──
+    if args.list_tokens:
+        log(f"\n{'DenseID':>8s} {'RawCode':>8s} {'dpsi_rad':>10s} "
+            f"{'dpsi_deg':>10s} {'psi_dot_dps':>12s} {'dalt_m':>8s} {'dspd_mps':>10s}")
+        log("-" * 78)
+        for did in sorted(dense_to_raw.keys()):
+            raw = dense_to_raw[did]
+            chunk = decode_token(vqvae, raw, token_steps, act_mean, act_std, norm, dev)
+            row0 = chunk[0]
+            dpsi_r = float(row0[0])
+            dpsi_d = math.degrees(dpsi_r)
+            psi_dot_dps = dpsi_d / args.h_action_sec
+            dalt = float(row0[1])
+            dspd = float(row0[2])
+            log(f"  T{did:>2d}      {raw:>4d}    {dpsi_r:>+10.4f} "
+                f"{dpsi_d:>+10.2f}  {psi_dot_dps:>+11.2f}  {dalt:>+8.1f}  {dspd:>+10.2f}")
+        sys.exit(0)
+
+    # ── resolve profile + individual overrides ──
+    profile = get_profile(args.profile) if args.profile else get_profile(DEFAULT_PROFILE)
+    eff_lateral = args.lateral_mode if args.lateral_mode is not None else profile.lateral_mode
+    eff_vertical = args.vertical_mode if args.vertical_mode is not None else profile.vertical_mode
+    eff_bank = args.bank_angle_max if args.bank_angle_max is not None else profile.bank_angle_max_deg
+    log(f"[SWEEP] Profile: {profile.name} — {profile.description}")
 
     srv = TokenSweepServer(
         vqvae=vqvae,
@@ -581,6 +667,9 @@ def main():
         g_fixed=args.g_fixed,
         g_max=args.g_max,
         h_action_sec=args.h_action_sec,
+        lateral_mode=LateralMode(eff_lateral),
+        vertical_mode=VerticalMode(eff_vertical),
+        bank_angle_max=eff_bank,
         host=args.host,
         port=args.port,
         log_path=args.log_path,

@@ -57,6 +57,23 @@
 - VQ: `checkpoints/vqvae_clean_t4_cb64/best.pt`
 - Vocab: `datasets/dt2hz_H2s_vqclean_t4_cb64_tok.vocab.json`
 
+### 4.1 Python ↔ AFSIM（SAC_PROCESSOR TCP）场景对照
+
+> **说明**：AFSIM 侧通过 `SAC_PROCESSOR` 作为 **TCP 客户端**连接本机 Python（默认 `localhost:65432`）；Warlock 在仿真开始执行时才会建连，因此需 **先 Python 监听、后启动 AFSIM**。详见 `build/demos/air_to_air/2v2_作战实体状态与指令交互说明.md`。  
+> 本表中的「Python 入口」均指 **同一套 socket 文本帧 + `STATUS`+640×float32 动作帧**（与 `bc_policy_socket_server` 协议一致），除非另注。
+
+| Python 入口（`wow/sim/`） | 默认端口 | 典型用途 | 可配合的 AFSIM 场景（`build/demos/air_to_air/`） |
+|---------------------------|----------|----------|---------------------------------------------------|
+| `python -m sim.token_bridge_server` | 65432 | 在线 **离散 token** 策略 → VQ 解码 → 4D 控制（含 G） | **主场景**：`scenarios/2v2_p6dof_token.txt`（文件头含启动命令；**无**现成顶层 `2v2_*.txt` 时，可复制 `2v2_model_only.txt` 改 `SCNRIO` 为 `2v2_p6dof_token`）。**亦可**：`2v2_model_only.txt`/`scenarios/2v2_p6dof_model_only.txt`；`2v2_kinematic_model_only.txt`/`scenarios/2v2_kinematic_model_only.txt`；`2v2_bc_close.txt`/`scenarios/2v2_p6dof_bc_close.txt`；`2v2_tspi_blue.txt`/`scenarios/2v2_p6dof_tspi_blue.txt`（仅红方 P6DOF 受控时需与 `--control_indices` 一致）。 |
+| `python -m sim.token_sweep_server` | 65432 | **不跑 policy**，仅 VQ 解码扫 vocab（联调/对比） | 与上 **相同**：只要场景含 `SAC_PROCESSOR` 且协议一致即可；常用 `2v2_model_only.txt` 或 `2v2_kinematic_model_only.txt`。 |
+| `python -m sim.bc_policy_socket_server` | 65432 | **连续 BC** 策略（非 token）；可选 `--token_shadow` 挂载只读对照 | **主场景**：`2v2_bc_transformer.txt`（把 `SCNRIO` 设为 `2v2_p6dof_bc`）或 **直接** `scenarios/2v2_p6dof_bc.txt`；**亦可**：`2v2_bc_close.txt`/`scenarios/2v2_p6dof_bc_close.txt`；`2v2_tspi_blue.txt`（BC 控红方时对齐 `mControlledPlatforms`）。 |
+| `sim/token_shadow.py`（模块） | — | 不单独启动；由 `bc_policy_socket_server --token_shadow` 加载 | 与 **bc_policy_socket_server** 同一批场景。 |
+| `sim/llm_with_connection/realtime_server.py` | **可配置**（非 65432 默认） | LLM 规划，**可能含 PULL/扩展协议** | **不**与上表 SAC 标准场景自动混用；需仿真端与 `llm_with_connection/socket_protocol.py` 一致时再对接。 |
+
+**不接 Python 的示例**（无 `SAC_PROCESSOR` 或用途不同）：`scenarios/acmi_replay_aircraft_only.txt`、`acmi_replay_with_afsim_weapons.txt` 等（见各文件头注释）。
+
+**顶层入口（`SCNRIO`）与 `scenarios/` 关系**：多数 `2v2_*.txt` 通过 `define_path_variable SCNRIO  <name>` 再 `include_once scenarios/${SCNRIO}.txt`。改场景时改 `SCNRIO` 或换顶层文件即可。
+
 ---
 
 ## 5. 启动方式

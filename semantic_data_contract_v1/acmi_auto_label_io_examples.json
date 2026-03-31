@@ -1,0 +1,196 @@
+{
+  "_description": "AI 自动标注调用时的输入/输出格式规范和校验规则。v1.1: AI 输出 label + quality_hint, adapter 负责搬入 canonical quality。",
+  "_version": "v1.1",
+
+  "format_A_minimal_input": {
+    "description": "最小输入: 仅 obs (单一时刻), 无证据",
+    "example": {
+      "ego": {
+        "speed_mps": 320.5,
+        "altitude_m": 7500,
+        "heading_deg": 45.2,
+        "vertical_speed_mps": -2.1,
+        "pos_east_m": 15200,
+        "pos_north_m": 38400,
+        "energy_state": "medium"
+      },
+      "enemy": {
+        "target_ref": "enemy_1",
+        "range_m": 28000,
+        "bearing_deg": 12.5,
+        "aspect_deg": 25,
+        "closure_mps": -180,
+        "alt_diff_m": 500
+      },
+      "ally": null,
+      "engagement": {
+        "is_merge": false,
+        "is_defensive": false
+      },
+      "history": {
+        "prev_semantic_state": "commit_intercept",
+        "prev_token_family": "sustain",
+        "prev_target_ref": "enemy_1"
+      }
+    }
+  },
+
+  "format_B_evidence_input": {
+    "description": "带证据输入: obs (单一时刻) + 简短规则提示/武器事件",
+    "example": {
+      "obs": {
+        "ego": {
+          "speed_mps": 280,
+          "altitude_m": 4200,
+          "heading_deg": 190,
+          "vertical_speed_mps": -15,
+          "energy_state": "low"
+        },
+        "enemy": {
+          "target_ref": "enemy_1",
+          "range_m": 3500,
+          "bearing_deg": -145,
+          "aspect_deg": 30,
+          "closure_mps": 50,
+          "alt_diff_m": -800
+        },
+        "engagement": {
+          "is_merge": false,
+          "is_defensive": true
+        },
+        "history": {
+          "prev_semantic_state": "merge_entry",
+          "prev_token_family": "hard_right_turn",
+          "prev_target_ref": "enemy_1"
+        }
+      },
+      "evidence_hints": [
+        "enemy aspect < 60 deg, range < 5km -> is_defensive (per annotation_guideline_v1.md)",
+        "ego vertical_speed strongly negative -> descending",
+        "prev_state was merge_entry -> post-merge phase"
+      ]
+    }
+  },
+
+  "format_C_required_output": {
+    "description": "LLM 必须输出的 JSON 格式。label 和 quality_hint 分离; adapter 负责将 quality_hint 搬入 canonical 的 quality 字段。",
+    "schema": {
+      "label": {
+        "semantic_state": "string (from enum) or null",
+        "target_ref": "string (enemy_1/enemy_2/ally_1) or null",
+        "role": "string (engaged/support/egressing/neutral) or null",
+        "constraints": {
+          "prefer_energy_preserve": "boolean or null",
+          "allow_aggressive_turn": "boolean or null",
+          "must_support_teammate": "boolean or null",
+          "should_abort_if_threatened": "boolean or null"
+        },
+        "profile_hint": "string (p6dof_semantic/p6dof_aggressive_turn/auto) or null",
+        "event_flags": {
+          "target_switch": "boolean or null"
+        },
+        "rationale_short": "string (max 120 chars) or null"
+      },
+      "quality_hint": {
+        "confidence": "number [0,1]",
+        "conflict_flag": "boolean (default false)",
+        "needs_review": "boolean (default false)"
+      }
+    },
+    "example_output": {
+      "label": {
+        "semantic_state": "defensive_break",
+        "target_ref": null,
+        "role": "engaged",
+        "constraints": {
+          "prefer_energy_preserve": false,
+          "allow_aggressive_turn": true,
+          "must_support_teammate": false,
+          "should_abort_if_threatened": false
+        },
+        "profile_hint": "p6dof_aggressive_turn",
+        "event_flags": {
+          "target_switch": false
+        },
+        "rationale_short": "敌在后半球近距, 大幅俯冲中, 生存优先急转脱离"
+      },
+      "quality_hint": {
+        "confidence": 0.85,
+        "conflict_flag": false,
+        "needs_review": false
+      }
+    },
+    "adapter_mapping": {
+      "canonical.label.*": "<- AI output.label.*",
+      "canonical.quality.confidence": "<- AI output.quality_hint.confidence",
+      "canonical.quality.conflict_flag": "<- AI output.quality_hint.conflict_flag",
+      "canonical.quality.needs_review": "<- AI output.quality_hint.needs_review",
+      "canonical.quality.tier": "<- 由规则派生, 不直接由 LLM 决定"
+    }
+  },
+
+  "format_D_validation_rules": {
+    "description": "输出校验规则",
+    "rules": [
+      {
+        "id": "V01",
+        "check": "label.semantic_state 必须来自枚举集或为 null",
+        "valid_values": ["commit_intercept", "hold_geometry", "press_attack", "extend", "support", "merge_entry", "offensive_turn", "defensive_break", "energy_manage", null],
+        "on_fail": "reject"
+      },
+      {
+        "id": "V02",
+        "check": "label.target_ref 必须来自枚举集或为 null",
+        "valid_values": ["enemy_1", "enemy_2", "ally_1", null],
+        "on_fail": "reject"
+      },
+      {
+        "id": "V03",
+        "check": "label.role 必须来自枚举集或为 null",
+        "valid_values": ["engaged", "support", "egressing", "neutral", null],
+        "on_fail": "reject"
+      },
+      {
+        "id": "V04",
+        "check": "label.profile_hint 必须来自枚举集或为 null",
+        "valid_values": ["p6dof_semantic", "p6dof_aggressive_turn", "auto", null],
+        "on_fail": "reject"
+      },
+      {
+        "id": "V05",
+        "check": "label.constraints 各字段必须为 boolean 或 null",
+        "on_fail": "reject"
+      },
+      {
+        "id": "V06",
+        "check": "label.rationale_short 长度 <= 120 字符",
+        "on_fail": "truncate_and_warn"
+      },
+      {
+        "id": "V07",
+        "check": "quality_hint.confidence 必须在 [0, 1] 范围内",
+        "on_fail": "clamp_and_warn"
+      },
+      {
+        "id": "V08",
+        "check": "顶层只允许 label 和 quality_hint 两个 key",
+        "on_fail": "strip_extra_fields"
+      },
+      {
+        "id": "V09",
+        "check": "label.event_flags.target_switch 应与 history.prev_target_ref vs label.target_ref 一致",
+        "on_fail": "flag_conflict"
+      },
+      {
+        "id": "V10",
+        "check": "label.semantic_state=null 时 quality_hint.confidence 应 < 0.3",
+        "on_fail": "warn"
+      },
+      {
+        "id": "V11",
+        "check": "quality_hint.conflict_flag=true 时 quality_hint.needs_review 应为 true",
+        "on_fail": "auto_fix_needs_review_to_true"
+      }
+    ]
+  }
+}

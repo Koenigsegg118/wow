@@ -330,3 +330,18 @@ python -m sim.token_sweep_server \
 ```bash
 python tools/analyze_sweep.py logs/sweep_T29_fr_dg.jsonl
 ```
+
+---
+
+## Part 9: Python 入口 ↔ AFSIM 场景（速查）
+
+AFSIM 通过 `SAC_PROCESSOR` 以 **TCP 客户端**连接到 Python（默认 `localhost:65432`）；**先 Python 监听，后启动仿真**。
+
+| Python | 典型场景（根目录在 `build/demos/air_to_air/`） |
+|--------|-----------------------------------------------|
+| `sim.token_bridge_server` | `scenarios/2v2_p6dof_token.txt`（或复制 `2v2_model_only.txt` 改 `SCNRIO`）；亦可 `2v2_model_only.txt`、`2v2_kinematic_model_only.txt`、`2v2_bc_close.txt`、`2v2_tspi_blue.txt` |
+| `sim.token_sweep_server` | 同上（协议一致即可） |
+| `sim.bc_policy_socket_server`（可选 `--token_shadow`） | `2v2_bc_transformer.txt`（`SCNRIO=2v2_p6dof_bc`）、`scenarios/2v2_p6dof_bc.txt`、`2v2_bc_close.txt` 等 |
+| `llm_with_connection` | 需单独协议对齐，**不**默认与上表混用 |
+
+完整说明、端口与注意事项见 **`docs/MIGRATION_HANDOFF.md` §4.1**。

@@ -1,3 +1,11 @@
+"""LLM realtime socket server (optional PULL / extended protocol).
+
+NOT the same entry point as ``token_bridge_server`` / ``bc_policy_socket_server``.
+Port and behavior are configurable; align AFSIM or a custom driver with
+``llm_with_connection/socket_protocol.py`` before using with a scene.
+See ``docs/MIGRATION_HANDOFF.md`` §4.1 (llm_with_connection row).
+
+"""
 import os
 import socket
 import threading

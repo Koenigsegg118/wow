@@ -1,0 +1,74 @@
+[
+  {
+    "label": "commit_intercept",
+    "category": "obfm",
+    "description": "主动接敌, 建立截获/压迫态势; 通常表现为朝向目标方向的稳定飞行或浅转弯, 伴随加速或维速",
+    "typical_conditions": ["远距(>40km)", "目标在前半球", "能量状态充足"],
+    "execution_bias": ["sustain", "mild_climb", "mild_right_turn", "mild_left_turn"],
+    "notes": "当前数据无敌我几何, 需态势层推断; 与 sustain 的区别在于是否有指向目标的意图"
+  },
+  {
+    "label": "hold_geometry",
+    "category": "obfm",
+    "description": "保持当前几何关系, 不激进推进也不撤离; 稳态巡航, 等待时机或维持阵位",
+    "typical_conditions": ["中距(15-40km)", "友机正在交战", "己方非主攻"],
+    "execution_bias": ["sustain", "mild_climb", "mild_descend"],
+    "notes": "原 hold_intercept 重命名; 更通用, 不仅限于拦截几何"
+  },
+  {
+    "label": "press_attack",
+    "category": "obfm",
+    "description": "积极推进进入武器包线, 表现为加速/俯冲或偏航修正以建立射击条件",
+    "typical_conditions": ["中近距(<20km)", "目标在前半球", "有射击机会"],
+    "execution_bias": ["moderate_right_turn", "moderate_left_turn", "descend", "climb"],
+    "notes": "合并了原 wez_commit; press_attack 更直观, 覆盖包线进入和维持"
+  },
+  {
+    "label": "extend",
+    "category": "obfm",
+    "description": "脱离当前交战, 拉开距离并恢复能量; 直线加速远离或浅转弯拉开",
+    "typical_conditions": ["交战后需要分离", "能量不足", "需要重新准备"],
+    "execution_bias": ["sustain", "mild_climb", "climb"],
+    "notes": "合并了原 abort_extend 和 recommit 的前半段; extend 后的重新接敌属于 commit_intercept"
+  },
+  {
+    "label": "support",
+    "category": "coordination",
+    "description": "支援友机, 包括提供掩护、配合夹击、拉扯敌方注意力",
+    "typical_conditions": ["友机交战中", "己方非直接接敌"],
+    "execution_bias": ["mild_right_turn", "mild_left_turn", "sustain"],
+    "notes": "当前数据无友机配对, 该标签需态势层推断"
+  },
+  {
+    "label": "merge_entry",
+    "category": "merge",
+    "description": "进入近距交战几何, 从BVR过渡到WVR; 通常表现为大幅转弯和能量管理转换",
+    "typical_conditions": ["近距(<5km)", "双方接近交汇"],
+    "execution_bias": ["moderate_right_turn", "moderate_left_turn", "right_turn_descend", "left_turn_descend"],
+    "notes": "merge是从远/中距到近距的关键状态转换点"
+  },
+  {
+    "label": "offensive_turn",
+    "category": "bfm",
+    "description": "主动争夺角度优势的转弯机动, 包括纯追踪、引导追踪、偏向鼻位争夺",
+    "typical_conditions": ["近距", "目标在侧方或后半球边缘"],
+    "execution_bias": ["hard_left_turn", "hard_right_turn", "moderate_left_turn", "moderate_right_turn"],
+    "notes": "合并了原 one_circle 和 two_circle; 当前无法仅从token区分1C/2C, 需角速率+几何分析"
+  },
+  {
+    "label": "defensive_break",
+    "category": "dbfm",
+    "description": "防御性急转/脱离, 生存优先; 大幅转弯+俯冲, 牺牲能量换取生存",
+    "typical_conditions": ["被锁定/被追踪", "敌在后半球", "紧急状态"],
+    "execution_bias": ["hard_left_turn", "hard_right_turn", "steep_descend", "hard_left_turn_descend"],
+    "notes": "合并了原 defensive_escape 和 neutralize_or_separate; 当前数据无威胁判断, 需态势层推断"
+  },
+  {
+    "label": "energy_manage",
+    "category": "energy",
+    "description": "主动进行能量状态调整, 非战术机动; 爬升换势能、俯冲换动能、或稳态恢复",
+    "typical_conditions": ["非接敌阶段", "能量状态需要调整"],
+    "execution_bias": ["climb", "descend", "steep_descend", "mild_climb"],
+    "notes": "新增标签; 原标签集缺少纯能量管理意图; 与 extend 的区别: extend有脱离目的, energy_manage纯能量调整"
+  }
+]

@@ -1,0 +1,389 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "semantic_record_v1.1",
+  "title": "Semantic Record V1.1 - Canonical annotation record for air combat semantic labeling",
+  "description": "项目内部唯一真相源。所有标注来源(manual/acmi_ai/afsim_rule)最终都归一到此格式。内部统一用 null 表示缺失, 严禁使用字符串 unknown/unavailable。单位: 距离 m, 速度 m/s, 角度 deg, 时间 s。样本粒度: 单一决策时刻。",
+  "type": "object",
+  "required": ["schema_version", "sample_id", "source", "obs", "label", "evidence", "quality"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "semantic_record_v1",
+      "description": "Schema 版本标识, 固定为 semantic_record_v1 (v1.1 补丁不改版本号)"
+    },
+    "sample_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "全局唯一样本 ID, 建议格式: {source_type}_{scenario}_{timestamp}_{seq}, 如 acmi_ai_s01_120.5_001"
+    },
+    "source": {
+      "type": "object",
+      "required": ["platform", "type"],
+      "additionalProperties": false,
+      "description": "数据来源元信息",
+      "properties": {
+        "platform": {
+          "type": "string",
+          "enum": ["afsim_acmi", "manual", "mixed"],
+          "description": "数据产生平台: afsim_acmi=AFSIM仿真的ACMI回放, manual=人工构造, mixed=多来源融合"
+        },
+        "type": {
+          "type": "string",
+          "enum": ["manual", "acmi_ai", "afsim_rule", "mixed"],
+          "description": "标注方式: manual=人工标注, acmi_ai=AI自动标注, afsim_rule=基于规则的标注, mixed=混合"
+        },
+        "scenario_id": {
+          "type": ["string", "null"],
+          "description": "场景标识, 如 ACMI 文件名(不含路径), 如 scenario_001.acmi"
+        },
+        "episode_id": {
+          "type": ["string", "null"],
+          "description": "回合标识, 同一 scenario 中的子回合"
+        },
+        "timestamp_sec": {
+          "type": ["number", "null"],
+          "description": "样本对应的仿真时间 (s), 来自 ACMI 的 #timestamp; 每条记录对应单一时刻"
+        },
+        "annotator": {
+          "type": ["string", "null"],
+          "description": "标注者标识: 人名或模型名, 如 human_zhangsan 或 qwen3-4b"
+        },
+        "tool": {
+          "type": ["string", "null"],
+          "description": "使用的标注工具/脚本, 如 acmi_auto_label_v1.py"
+        }
+      }
+    },
+    "obs": {
+      "type": "object",
+      "required": ["ego"],
+      "additionalProperties": false,
+      "description": "观测态势快照 (单一时刻的瞬时值)",
+      "properties": {
+        "ego": {
+          "type": "object",
+          "required": [],
+          "additionalProperties": false,
+          "description": "己方飞行状态",
+          "properties": {
+            "runtime_id": {
+              "type": ["string", "null"],
+              "description": "AFSIM 运行时平台 ID 或 ACMI object ID"
+            },
+            "callsign": {
+              "type": ["string", "null"],
+              "description": "呼号, 如 ACMI 中的 Pilot/Name 字段"
+            },
+            "coalition": {
+              "type": ["string", "null"],
+              "enum": ["red", "blue", "neutral", null],
+              "description": "阵营, 从 ACMI 的 Coalition/Color 推断; 无法确定时为 null"
+            },
+            "speed_mps": {
+              "type": ["number", "null"],
+              "description": "地面速度 (m/s), 来自 sqrt(vx^2+vy^2) 或 ACMI Speed 字段"
+            },
+            "altitude_m": {
+              "type": ["number", "null"],
+              "description": "海拔高度 (m), 来自 ACMI Alt 或 obs[2]"
+            },
+            "heading_deg": {
+              "type": ["number", "null"],
+              "description": "航迹角 (deg, 0=北, 顺时针正), 从 atan2(vx_e, vy_n) 或 ACMI Yaw 转换"
+            },
+            "pitch_deg": {
+              "type": ["number", "null"],
+              "description": "俯仰角 (deg), ACMI 直接给或 asin(vz/speed) 近似"
+            },
+            "roll_deg": {
+              "type": ["number", "null"],
+              "description": "横滚角 (deg), ACMI 直接给或 atan(V*psi_dot/g) 估算; AFSIM 运行时不回传 roll, 则为 null"
+            },
+            "vertical_speed_mps": {
+              "type": ["number", "null"],
+              "description": "垂直速度 (m/s, 正=上升), 来自 obs[5] 或 ACMI 差分"
+            },
+            "pos_east_m": {
+              "type": ["number", "null"],
+              "description": "东向位置 (m), ENU 坐标"
+            },
+            "pos_north_m": {
+              "type": ["number", "null"],
+              "description": "北向位置 (m), ENU 坐标"
+            },
+            "energy_state": {
+              "type": ["string", "null"],
+              "enum": ["low", "medium", "high", null],
+              "description": "比能量分桶: E_spec = altitude_m + speed_mps^2 / (2*9.81); low=<=q30, medium=q30~q70, high=>q70; 分位数阈值由数据集预处理配置提供; speed/altitude 缺失时为 null"
+            }
+          }
+        },
+        "enemy": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "description": "当前关注的主敌方平台状态 (单对象, 非数组); 无敌方信息时整体为 null; 多目标场景中只保留主要关注目标, 次要目标信息放入 extras",
+          "properties": {
+            "target_ref": {
+              "type": ["string", "null"],
+              "enum": ["enemy_1", "enemy_2", null],
+              "description": "角色中性的敌方标识 (按运行时分配序号)"
+            },
+            "target_runtime_id": {
+              "type": ["string", "null"],
+              "description": "AFSIM/ACMI 中的实际 object ID"
+            },
+            "callsign": {
+              "type": ["string", "null"],
+              "description": "敌方呼号"
+            },
+            "range_m": {
+              "type": ["number", "null"],
+              "description": "与敌方的斜距 (m), sqrt(dx^2+dy^2+dz^2)"
+            },
+            "bearing_deg": {
+              "type": ["number", "null"],
+              "description": "敌方相对方位角 (deg, 正=右侧), 归一化到 [-180, 180]; 计算详见 annotation_guideline_v1.md"
+            },
+            "aspect_deg": {
+              "type": ["number", "null"],
+              "description": "敌方展示角 (deg), 0=头对头, 180=尾追; 计算详见 annotation_guideline_v1.md"
+            },
+            "closure_mps": {
+              "type": ["number", "null"],
+              "description": "接近率 (m/s), d(range)/dt, 负=接近"
+            },
+            "alt_diff_m": {
+              "type": ["number", "null"],
+              "description": "高度差 (m), ego_alt - enemy_alt, 正=己方更高"
+            },
+            "is_primary_threat": {
+              "type": ["boolean", "null"],
+              "description": "是否为主要威胁, 需规则判定"
+            }
+          }
+        },
+        "ally": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "description": "友方平台状态 (单对象, 非数组); 无友方信息时整体为 null; 2v2 场景最多一个友机",
+          "properties": {
+            "ally_ref": {
+              "type": ["string", "null"],
+              "enum": ["ally_1", null],
+              "description": "角色中性的友方标识"
+            },
+            "ally_runtime_id": {
+              "type": ["string", "null"],
+              "description": "AFSIM/ACMI 中的实际 object ID"
+            },
+            "callsign": {
+              "type": ["string", "null"],
+              "description": "友方呼号"
+            },
+            "range_m": {
+              "type": ["number", "null"],
+              "description": "与友方的距离 (m)"
+            },
+            "bearing_deg": {
+              "type": ["number", "null"],
+              "description": "友方相对方位角 (deg)"
+            },
+            "is_supporting": {
+              "type": ["boolean", "null"],
+              "description": "友方是否在执行支援"
+            }
+          }
+        },
+        "engagement": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "description": "交战态势标志; 判定逻辑的唯一规范来源: annotation_guideline_v1.md",
+          "properties": {
+            "is_merge": {
+              "type": ["boolean", "null"],
+              "description": "是否处于 merge 阶段; 判定规则见 annotation_guideline_v1.md"
+            },
+            "is_defensive": {
+              "type": ["boolean", "null"],
+              "description": "是否处于防御态势; 判定规则见 annotation_guideline_v1.md"
+            },
+            "has_shot_opportunity": {
+              "type": ["boolean", "null"],
+              "description": "是否有射击机会; 当前仿真无武器包线, 通常为 null; 可从 weapon_event 事后推断"
+            }
+          }
+        },
+        "history": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "description": "时间序列上下文 (来自上一决策时刻)",
+          "properties": {
+            "prev_semantic_state": {
+              "type": ["string", "null"],
+              "description": "上一决策周期的语义标签, 首帧为 null"
+            },
+            "prev_token_family": {
+              "type": ["string", "null"],
+              "description": "上一步的 token family (从 token_family_catalog 查表)"
+            },
+            "prev_target_ref": {
+              "type": ["string", "null"],
+              "description": "上一步的 target_ref, 用于检测 target_switch"
+            }
+          }
+        }
+      }
+    },
+    "label": {
+      "type": "object",
+      "required": ["semantic_state"],
+      "additionalProperties": false,
+      "description": "标注输出; 不含 confidence (confidence 在 quality.confidence)",
+      "properties": {
+        "semantic_state": {
+          "type": ["string", "null"],
+          "enum": [
+            "commit_intercept", "hold_geometry", "press_attack",
+            "extend", "support", "merge_entry",
+            "offensive_turn", "defensive_break", "energy_manage",
+            null
+          ],
+          "description": "高层战术意图, null 表示信息不足无法判断 (不应用 hold_geometry 填充)"
+        },
+        "target_ref": {
+          "type": ["string", "null"],
+          "enum": ["enemy_1", "enemy_2", "ally_1", null],
+          "description": "当前主要作用目标"
+        },
+        "role": {
+          "type": ["string", "null"],
+          "enum": ["engaged", "support", "egressing", "neutral", null],
+          "description": "本机在编队中的角色: engaged=直接交战, support=掩护配合, egressing=脱离中, neutral=无明确角色"
+        },
+        "constraints": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "description": "行为约束, 各字段可独立为 null",
+          "properties": {
+            "prefer_energy_preserve": {
+              "type": ["boolean", "null"],
+              "description": "优先保持能量"
+            },
+            "allow_aggressive_turn": {
+              "type": ["boolean", "null"],
+              "description": "允许大 bank 角 (>60 deg)"
+            },
+            "must_support_teammate": {
+              "type": ["boolean", "null"],
+              "description": "必须考虑友机位置"
+            },
+            "should_abort_if_threatened": {
+              "type": ["boolean", "null"],
+              "description": "受威胁时自动切防御"
+            }
+          }
+        },
+        "profile_hint": {
+          "type": ["string", "null"],
+          "enum": ["p6dof_semantic", "p6dof_aggressive_turn", "auto", null],
+          "description": "建议的 P6DOF profile"
+        },
+        "event_flags": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "description": "离散事件标志 (与 semantic_state 持续状态分离)",
+          "properties": {
+            "target_switch": {
+              "type": ["boolean", "null"],
+              "description": "本步是否发生了目标切换 (对比 history.prev_target_ref)"
+            }
+          }
+        },
+        "rationale_short": {
+          "type": ["string", "null"],
+          "maxLength": 120,
+          "description": "一句话标注理由, 限 120 字符, 供审阅用"
+        }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "required": [],
+      "additionalProperties": false,
+      "description": "标注依据和可追溯性",
+      "properties": {
+        "rule_ids": {
+          "type": "array",
+          "items": {"type": "string"},
+          "default": [],
+          "description": "触发的标注规则 ID 列表, 如 [R01_range_decreasing, R05_high_bank]"
+        },
+        "acmi_refs": {
+          "type": "array",
+          "items": {"type": "string"},
+          "default": [],
+          "description": "ACMI 文件引用, 格式: filename.acmi:object_id:timestamp"
+        },
+        "frame_refs": {
+          "type": "array",
+          "items": {"type": "string"},
+          "default": [],
+          "description": "AFSIM 640 值帧引用, 格式: frame_{simTime}"
+        },
+        "notes": {
+          "type": ["string", "null"],
+          "description": "自由文本备注"
+        }
+      }
+    },
+    "quality": {
+      "type": "object",
+      "required": ["tier", "needs_review"],
+      "additionalProperties": false,
+      "description": "标注质量评估; confidence 由 AI 标注器提供, tier 由规则派生",
+      "properties": {
+        "tier": {
+          "type": "string",
+          "enum": ["gold", "silver", "bronze", "weak"],
+          "description": "gold=人工审核确认, silver=AI高置信+规则一致(conflict_flag=true时tier上限), bronze=AI中低置信或单一来源, weak=信息严重不足"
+        },
+        "confidence": {
+          "type": ["number", "null"],
+          "minimum": 0.0,
+          "maximum": 1.0,
+          "description": "标注置信度 [0,1], AI 标注时由 quality_hint.confidence 搬入, 人工标注可为 null"
+        },
+        "needs_review": {
+          "type": "boolean",
+          "description": "是否需要人工复核; conflict_flag=true 时强制为 true"
+        },
+        "conflict_flag": {
+          "type": "boolean",
+          "default": false,
+          "description": "多来源标注是否存在冲突; 为 true 时 tier 不得高于 silver, needs_review 强制为 true"
+        }
+      }
+    },
+    "extras": {
+      "type": ["object", "null"],
+      "description": "扩展字段, 存放原始 ID / 武器事件 / 次要目标等非核心信息; 此对象允许 additionalProperties 以容纳未预定义的扩展数据",
+      "properties": {
+        "raw_object_ids": {
+          "type": ["object", "null"],
+          "description": "原始平台 ID 映射, 如 {ego: '0x1A2B', enemy_1: '0x3C4D'}"
+        },
+        "raw_tags": {
+          "type": ["array", "null"],
+          "items": {"type": "string"},
+          "description": "自由标签列表"
+        },
+        "weapon_event_refs": {
+          "type": ["array", "null"],
+          "items": {"type": "string"},
+          "description": "关联的武器事件 ID, 来自 acmi2weapon_events.py 的 missile_id"
+        }
+      }
+    }
+  }
+}

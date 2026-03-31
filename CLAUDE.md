@@ -126,3 +126,19 @@ Edit `llm_with_connection/config.py` to change:
 - `sft_data.py`, `sft.py`, `preprocess_cpt_data.py`: Training data pipeline for fine-tuning models on combat telemetry
 - `decision.py`: Standalone local Transformers inference (no server required)
 - `bidir_pipe_win.py`: Windows bidirectional pipe communication utility
+
+## Semantic Data Contract — Schema 变更规则 (强制)
+
+`semantic_data_contract_v1/` 是项目语义标注数据的唯一规范。**任何对字段名、枚举值、粒度的变更都必须按以下顺序执行，不得跳步：**
+
+1. 先改 `semantic_record_schema_v1.json`
+2. 再改 `enum_registry_v1.json`
+3. 再改对照表 / guideline / prompt / export spec（`semantic_record_template_readable.md`, `annotation_guideline_v1.md`, `acmi_annotation_prompt_v1.txt`, `sft_export_spec_v1.md`, `acmi_auto_label_io_examples.json`）
+4. 最后 bump 一个 patch 版本（更新 `V1_1_PATCH_SUMMARY.md` 或创建新的 patch summary）
+
+**禁止：**
+- 边做数据边改字段名/枚举/粒度
+- 在单个文件中私自新增枚举值而不更新 enum_registry
+- 三路数据（manual / acmi_ai / afsim_rule）各自定义不同字段名
+
+违反此规则会导致三路数据不对齐，修复成本极高。

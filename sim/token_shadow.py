@@ -2,6 +2,11 @@
 # -*- coding: utf-8 -*-
 """Read-only token policy shadow module.
 
+AFSIM: not a standalone server — enable via
+``python -m sim.bc_policy_socket_server ... --token_shadow``.
+Use the same scenarios as ``bc_policy_socket_server`` (see its module docstring
+and ``docs/MIGRATION_HANDOFF.md`` §4.1).
+
 Designed to be embedded inside ``bc_policy_socket_server.py``.  It receives
 the same AFSIM state that the primary controller sees, runs the frozen
 token policy chain in parallel, and logs what the token policy *would*

@@ -6,6 +6,20 @@ Replaces the continuous BC policy with the frozen discrete token policy
 chain (OneStepTokenBC -> VQ-VAE decode -> 4-step action chunk) while
 keeping the existing AFSIM socket protocol unchanged.
 
+AFSIM SCENARIOS (TCP client -> this server, default localhost:65432)
+------------------------------------------------------------------
+Same SAC_PROCESSOR socket protocol as ``bc_policy_socket_server``.
+Typical scenes under ``build/demos/air_to_air/``:
+
+- ``scenarios/2v2_p6dof_token.txt`` (header documents this bridge; may need
+  a top-level entry with ``SCNRIO=2v2_p6dof_token``).
+- ``2v2_model_only.txt`` -> ``scenarios/2v2_p6dof_model_only.txt``
+- ``2v2_kinematic_model_only.txt`` -> ``scenarios/2v2_kinematic_model_only.txt``
+- ``2v2_bc_close.txt`` / ``2v2_tspi_blue.txt`` when control_indices match
+  ``mControlledPlatforms``.
+
+See ``docs/MIGRATION_HANDOFF.md`` §4.1 for the full mapping table.
+
 ACTION SEMANTICS (from training contract)
 ------------------------------------------
 The VQ-VAE chunk [4, 3] contains [dpsi_rad, dalt_m, dspd_mps].

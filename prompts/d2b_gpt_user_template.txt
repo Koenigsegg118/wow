@@ -1,0 +1,67 @@
+请对下面这个**单一决策时刻**的空战态势样本进行语义标注。
+
+任务：
+基于给定的 obs（以及可选 evidence），输出当前时刻最合理的高层语义标签。
+你必须只输出一个合法 JSON，对齐项目的 format_C：
+{
+  "label": {...},
+  "quality_hint": {...}
+}
+
+你不能输出解释性正文、markdown、代码块或多余字段。
+
+【输入 obs】
+{{OBS_JSON}}
+
+【可选 evidence】
+{{EVIDENCE_JSON_OR_NULL}}
+
+在做最终判断前，请先遵守以下约束：
+
+1. 这是**单一决策时刻**，不是一个时间窗口。只能根据当前 obs 和给定 history 判断。
+2. `obs.enemy` 和 `obs.ally` 是**单对象或 null**，不是数组。
+3. 缺失统一用 `null`；不要输出 `"unknown"`、`"N/A"`、`"unavailable"`。
+4. `obs.enemy.target_ref` 只是当前观测中的主敌提示，**不等于**你最终要填的 `label.target_ref`。
+5. `target_switch` 只在“本帧 `label.target_ref` 与 `history.prev_target_ref` 都非 null 且不同”时才为 true；首次锁定不算 switch。
+6. `semantic_state = null` 是合法结果；如果证据不足，优先返回 null，不要用 `hold_geometry` 兜底。
+7. 当前 obs 里若 `roll_deg = null`、`has_shot_opportunity = null`、`energy_state = null`，不要假装这些信息存在。
+8. `obs.engagement.is_defensive` 和 `obs.engagement.is_merge` 只是态势提示，不必然等于最终 `semantic_state`。
+9. 若 evidence 与 obs 冲突，允许输出：
+   - `quality_hint.conflict_flag = true`
+   - `quality_hint.needs_review = true`
+
+请先在心里完成下面 6 个检查，再给最终 JSON：
+A. 当前主要作用目标是否应与 `history.prev_target_ref` 保持一致？
+B. 当前更像远距截获、压入攻击、进入 merge、主动脱离，还是证据不足？
+C. `is_defensive` 是否只是粗提示，而不等于 `defensive_break`？
+D. 如果想判 `support`，是否真的存在”配合/掩护友机或牵制敌机”的明确意图？
+E. 如果你无法可靠区分几个标签，是否应该返回 `semantic_state = null` 并降低 confidence？
+F. 如果你想判 `merge_entry`：closure 是否明显为负？bearing/aspect 是否呈现交汇几何？若 closure≈0 且 bearing≈90°，这更像 hold_geometry 而不是 merge。
+
+请特别注意以下判决纪律：
+- `merge_entry` 必须有”近距过渡 + 交汇/CPA”证据；closure≈0、bearing≈90°、aspect≈90°、is_merge=false 时**禁止输出 merge_entry**。
+- `hold_geometry` 不是默认标签，但 closure≈0 + 无推进/撤离意图时应优先考虑。
+- `defensive_break` 需要”紧急防御机动”证据，不能只因敌机在后半球或 `is_defensive=true` 就直接判定。
+- `extend` 是相对平缓、主动拉开距离/恢复能量；不要和 `defensive_break` 混淆。
+- `support` 不能因为”友机很近”就成立；若判 `support`，`target_ref` 应有明确主要关注对象，而不是随手填 null。
+- `target_switch` 是**离散事件**，不是持续状态。
+- `constraints` 各字段独立判断，不要全部填同一个值。
+
+输出要求：
+1. 顶层必须且只能有两个 key：`label` 和 `quality_hint`
+2. `label` 内字段只允许：
+   - `semantic_state`
+   - `target_ref`
+   - `role`
+   - `constraints`
+   - `profile_hint`
+   - `event_flags`
+   - `rationale_short`
+3. `quality_hint` 内字段只允许：
+   - `confidence`
+   - `conflict_flag`
+   - `needs_review`
+4. `rationale_short` 用中文，尽量短，最多 120 字
+5. 只输出 JSON 本体，不要输出任何额外说明
+
+现在开始标注。

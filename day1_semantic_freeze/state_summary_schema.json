@@ -1,0 +1,205 @@
+{
+  "$schema_version": "0.1.0",
+  "$description": "高层语义模型的输入态势摘要格式. 用于向 LLM/规则层提供结构化态势信息.",
+
+  "ego": {
+    "speed_mps": {
+      "type": "float",
+      "source": "obs[t, 7] (ground_speed_mps)",
+      "availability": "直接可得",
+      "description": "己方当前地面速度 (m/s)"
+    },
+    "altitude_m": {
+      "type": "float",
+      "source": "obs[t, 2] (z_u_m)",
+      "availability": "直接可得",
+      "description": "己方当前高度 (m)"
+    },
+    "heading_deg": {
+      "type": "float",
+      "source": "obs[t, 6] -> degrees, mod 360",
+      "availability": "直接可得",
+      "description": "己方当前航迹角 (deg, 0=北, 顺时针)"
+    },
+    "vertical_speed_mps": {
+      "type": "float",
+      "source": "obs[t, 5] (vz_u_mps)",
+      "availability": "直接可得",
+      "description": "己方垂直速度 (m/s, 正=上升)"
+    },
+    "position_east_m": {
+      "type": "float",
+      "source": "obs[t, 0] (x_e_m)",
+      "availability": "直接可得",
+      "description": "东向位置 (m)"
+    },
+    "position_north_m": {
+      "type": "float",
+      "source": "obs[t, 1] (y_n_m)",
+      "availability": "直接可得",
+      "description": "北向位置 (m)"
+    },
+    "energy_state": {
+      "type": "enum(low|medium|high)",
+      "source": "需从 speed + altitude 估算, 如 E_spec = altitude + speed^2/(2g)",
+      "availability": "可计算, 需定义阈值",
+      "description": "能量状态定性评估"
+    },
+    "pitch_deg": {
+      "type": "float",
+      "source": "当前8D obs不含pitch; 可从vz/speed近似: pitch ~ asin(vz/speed)",
+      "availability": "近似可得 (假设小侧滑角)",
+      "description": "俯仰角近似值 (deg)"
+    },
+    "roll_deg": {
+      "type": "float",
+      "source": "当前8D obs不含roll; AFSIM状态帧不回传roll",
+      "availability": "不可得",
+      "description": "横滚角; 当前baseline无法获取"
+    }
+  },
+
+  "enemy": {
+    "id": {
+      "type": "string",
+      "source": "需要从AFSIM 80-platform状态帧中识别敌方platform",
+      "availability": "原始640值帧中可得, 但当前训练数据为单实体窗口, 无配对",
+      "description": "敌方平台标识"
+    },
+    "range_m": {
+      "type": "float",
+      "source": "sqrt((x_ego - x_enemy)^2 + (y_ego - y_enemy)^2 + (z_ego - z_enemy)^2)",
+      "availability": "需要敌方位置 -> 从AFSIM状态帧可算, 但训练NPZ中无配对",
+      "description": "与敌方的距离 (m)"
+    },
+    "bearing_deg": {
+      "type": "float",
+      "source": "atan2(x_enemy - x_ego, y_enemy - y_ego) - heading_ego",
+      "availability": "需要敌方位置 + 己方航向",
+      "description": "敌方相对方位角 (deg, 正=右侧)"
+    },
+    "aspect_deg": {
+      "type": "float",
+      "source": "敌方航向与己敌连线的夹角",
+      "availability": "需要敌方航向 + 双方位置",
+      "description": "敌方展示角 (0=头对头, 180=追尾)"
+    },
+    "closure_mps": {
+      "type": "float",
+      "source": "径向速度分量 = d(range)/dt",
+      "availability": "需要双方速度向量 + 位置",
+      "description": "接近率 (m/s, 负=接近)"
+    },
+    "alt_diff_m": {
+      "type": "float",
+      "source": "z_ego - z_enemy",
+      "availability": "需要敌方高度",
+      "description": "高度差 (m, 正=己方更高)"
+    },
+    "is_primary_threat": {
+      "type": "bool",
+      "source": "需要威胁评估逻辑",
+      "availability": "需自定义规则 (如最近+正对)",
+      "description": "是否为主要威胁"
+    }
+  },
+
+  "ally": {
+    "id": {
+      "type": "string",
+      "source": "从AFSIM状态帧中识别友方platform",
+      "availability": "AFSIM运行时可得; 训练NPZ中无配对",
+      "description": "友方平台标识"
+    },
+    "range_m": {
+      "type": "float",
+      "source": "同enemy.range_m计算方式",
+      "availability": "AFSIM运行时可得",
+      "description": "与友方的距离 (m)"
+    },
+    "bearing_deg": {
+      "type": "float",
+      "source": "同enemy.bearing_deg计算方式",
+      "availability": "AFSIM运行时可得",
+      "description": "友方相对方位角 (deg)"
+    },
+    "is_supporting": {
+      "type": "bool",
+      "source": "需要编队协议/规则定义",
+      "availability": "需自定义逻辑",
+      "description": "友方是否在执行支援"
+    }
+  },
+
+  "engagement": {
+    "is_merge": {
+      "type": "bool",
+      "source": "range < 5km && closure < -100 mps",
+      "availability": "需要range+closure -> AFSIM运行时可计算",
+      "description": "是否处于merge阶段"
+    },
+    "is_defensive": {
+      "type": "bool",
+      "source": "enemy aspect < 60deg && enemy range < 10km (敌在后半球且近)",
+      "availability": "需要aspect+range -> AFSIM运行时可计算",
+      "description": "是否处于防御态势"
+    },
+    "has_shot_opportunity": {
+      "type": "bool",
+      "source": "需要武器包线模型(当前未建模)",
+      "availability": "不可得 (当前仿真无武器包线数据)",
+      "description": "是否有射击机会"
+    },
+    "needs_target_switch": {
+      "type": "bool",
+      "source": "需要多目标威胁评估",
+      "availability": "需自定义规则",
+      "description": "是否需要切换目标"
+    }
+  },
+
+  "history": {
+    "prev_semantic_state": {
+      "type": "string",
+      "source": "上一决策周期的语义输出",
+      "availability": "运行时维护; 首次调用为'unknown'",
+      "description": "上一步的语义状态标签"
+    },
+    "prev_token_family": {
+      "type": "string",
+      "source": "上一步token的family分类",
+      "availability": "直接可得 (从token_family_catalog查表)",
+      "description": "上一步执行的token族"
+    },
+    "prev_target_id": {
+      "type": "string",
+      "source": "上一决策周期的语义输出 target_id",
+      "availability": "运行时维护; 首次调用为'none'",
+      "description": "上一步的作用目标标识 (enemy_1/enemy_2/ally_1/none/unknown)"
+    }
+  },
+
+  "_availability_summary": {
+    "directly_available": [
+      "ego.speed_mps", "ego.altitude_m", "ego.heading_deg",
+      "ego.vertical_speed_mps", "ego.position_east_m", "ego.position_north_m",
+      "history.prev_token_family"
+    ],
+    "computable_from_obs": [
+      "ego.energy_state (需定义阈值)",
+      "ego.pitch_deg (近似)"
+    ],
+    "available_at_runtime_only": [
+      "enemy.* (需从AFSIM 640值帧提取对手platform)",
+      "ally.* (需从AFSIM 640值帧提取友方platform)",
+      "engagement.is_merge", "engagement.is_defensive"
+    ],
+    "not_available": [
+      "ego.roll_deg (AFSIM不回传)",
+      "engagement.has_shot_opportunity (无武器包线模型)",
+      "enemy.is_primary_threat (需威胁评估规则)",
+      "ally.is_supporting (需编队协议)",
+      "engagement.needs_target_switch (需多目标评估)"
+    ]
+  }
+}

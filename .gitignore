@@ -229,3 +229,7 @@ __marimo__/
 *.npz
 *.pt
 *.onnx
+
+# Paper and external training repo
+/paper/
+/wow_llm_training/

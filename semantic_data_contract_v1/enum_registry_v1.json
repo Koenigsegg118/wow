@@ -1,0 +1,141 @@
+{
+  "_description": "枚举值唯一注册表。所有枚举在此定义, 其他文件引用此表, 不得重复定义。v1.1 补丁更新。",
+  "_version": "v1.1",
+
+  "source.platform": {
+    "values": ["afsim_acmi", "manual", "mixed"],
+    "descriptions": {
+      "afsim_acmi": "AFSIM 仿真引擎产生的 ACMI (Tacview) 回放文件",
+      "manual": "人工构造的样本 (不来自仿真)",
+      "mixed": "多来源融合 (如 ACMI obs + 人工 label)"
+    }
+  },
+
+  "source.type": {
+    "values": ["manual", "acmi_ai", "afsim_rule", "mixed"],
+    "descriptions": {
+      "manual": "人工标注 (标注者直接判断)",
+      "acmi_ai": "AI 自动标注 (LLM 读取 obs 后输出 label)",
+      "afsim_rule": "基于规则的标注 (几何阈值/状态机自动生成)",
+      "mixed": "混合标注 (如规则初标 + AI 修正 + 人工确认)"
+    }
+  },
+
+  "obs.ego.coalition": {
+    "values": ["red", "blue", "neutral"],
+    "descriptions": {
+      "red": "红方阵营",
+      "blue": "蓝方阵营",
+      "neutral": "中立方"
+    },
+    "nullable": true,
+    "null_semantics": "无法确定阵营; canonical 内部不使用字符串 'unknown', 统一用 null"
+  },
+
+  "obs.ego.energy_state": {
+    "values": ["low", "medium", "high"],
+    "descriptions": {
+      "low": "比能量 E_spec <= q30 分位数阈值",
+      "medium": "比能量 E_spec 在 q30 ~ q70 范围内",
+      "high": "比能量 E_spec > q70 分位数阈值"
+    },
+    "nullable": true,
+    "null_semantics": "speed_mps 或 altitude_m 缺失时为 null",
+    "computation": "E_spec = altitude_m + speed_mps^2 / (2 * 9.81); q30/q70 阈值由数据集预处理配置提供"
+  },
+
+  "obs.enemy.target_ref": {
+    "values": ["enemy_1", "enemy_2"],
+    "descriptions": {
+      "enemy_1": "敌方第一平台 (按运行时分配序号, 非固定绑定)",
+      "enemy_2": "敌方第二平台"
+    },
+    "nullable": true,
+    "notes": "序号在每个 episode 内固定, 跨 episode 不保证一致; 2v2 场景最多 enemy_2"
+  },
+
+  "obs.ally.ally_ref": {
+    "values": ["ally_1"],
+    "descriptions": {
+      "ally_1": "友方平台 (2v2 场景中只有 1 个友机)"
+    },
+    "nullable": true,
+    "notes": "未来如扩展到 NvM, 可增加 ally_2 等"
+  },
+
+  "label.semantic_state": {
+    "values": [
+      "commit_intercept",
+      "hold_geometry",
+      "press_attack",
+      "extend",
+      "support",
+      "merge_entry",
+      "offensive_turn",
+      "defensive_break",
+      "energy_manage"
+    ],
+    "descriptions": {
+      "commit_intercept": "主动接敌, 建立截获/压迫态势; 朝目标方向稳定飞行或浅转弯+加速",
+      "hold_geometry": "保持当前几何关系, 不推进也不撤离; 等待时机或维持阵位",
+      "press_attack": "积极进入攻击, 修正方向+加速压入武器包线",
+      "extend": "脱离当前交战, 拉开距离并恢复能量",
+      "support": "支援友机, 掩护/配合/拉扯注意力",
+      "merge_entry": "进入近距交战几何重构, BVR->WVR 过渡",
+      "offensive_turn": "主动争夺角度优势的转弯机动 (含追踪/引导追踪)",
+      "defensive_break": "防御性急转/脱离, 生存优先, 大 bank 角+俯冲",
+      "energy_manage": "纯能量状态调整, 非战术机动"
+    },
+    "nullable": true,
+    "null_semantics": "信息不足无法判断; 不得用 hold_geometry 作为缺标注默认值"
+  },
+
+  "label.role": {
+    "values": ["engaged", "support", "egressing", "neutral"],
+    "descriptions": {
+      "engaged": "直接交战中 (主攻或防御)",
+      "support": "掩护/配合友机",
+      "egressing": "正在脱离交战区域",
+      "neutral": "无明确角色, 巡航或能量管理"
+    },
+    "nullable": true
+  },
+
+  "label.target_ref": {
+    "values": ["enemy_1", "enemy_2", "ally_1"],
+    "descriptions": {
+      "enemy_1": "当前主要作用目标为敌方第一平台",
+      "enemy_2": "当前主要作用目标为敌方第二平台",
+      "ally_1": "当前主要关注对象为友方平台 (support 场景)"
+    },
+    "nullable": true,
+    "null_semantics": "无特定目标 (如 energy_manage, hold_geometry)"
+  },
+
+  "label.profile_hint": {
+    "values": ["p6dof_semantic", "p6dof_aggressive_turn", "auto"],
+    "descriptions": {
+      "p6dof_semantic": "默认 profile, 保留 token 高度语义 (roll_from_token + vert_speed_from_token)",
+      "p6dof_aggressive_turn": "高 bank 角时维持高度的实验 profile",
+      "auto": "由执行层根据当前动作自动选择"
+    },
+    "nullable": true,
+    "null_semantics": "不提供 profile 建议"
+  },
+
+  "quality.tier": {
+    "values": ["gold", "silver", "bronze", "weak"],
+    "descriptions": {
+      "gold": "人工审核确认, 信息完整, 标签可信; conflict_flag 必须为 false",
+      "silver": "AI 高置信 (>0.8) 且与规则一致, 或人工初标未复核; conflict_flag=true 时的 tier 上限",
+      "bronze": "AI 中低置信 (0.5-0.8), 或单一来源, 或部分字段缺失; conflict_flag=true 且未人工审查时的推荐默认 tier",
+      "weak": "信息严重不足, 标签存疑, 仅供参考"
+    },
+    "ordering": "gold > silver > bronze > weak",
+    "rules": {
+      "conflict_flag_true_tier_cap": "silver",
+      "conflict_flag_true_unreviewed_default": "bronze",
+      "conflict_flag_true_forces_needs_review": true
+    }
+  }
+}

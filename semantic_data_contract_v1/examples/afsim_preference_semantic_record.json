@@ -1,0 +1,103 @@
+{
+  "schema_version": "semantic_record_v1",
+  "sample_id": "afsim_rule_pref_001_chosen",
+  "source": {
+    "platform": "mixed",
+    "type": "afsim_rule",
+    "scenario_id": "assessment_scripts.txt",
+    "episode_id": "target_switch",
+    "timestamp_sec": null,
+    "annotator": "afsim_rule_adapter",
+    "tool": "afsim_rule_to_semantic_record.py"
+  },
+  "obs": {
+    "ego": {
+      "runtime_id": null,
+      "callsign": null,
+      "coalition": null,
+      "speed_mps": null,
+      "altitude_m": null,
+      "heading_deg": null,
+      "pitch_deg": null,
+      "roll_deg": null,
+      "vertical_speed_mps": null,
+      "pos_east_m": null,
+      "pos_north_m": null,
+      "energy_state": null
+    },
+    "enemy": {
+      "target_ref": "enemy_1",
+      "target_runtime_id": null,
+      "callsign": null,
+      "range_m": null,
+      "bearing_deg": null,
+      "aspect_deg": null,
+      "closure_mps": null,
+      "alt_diff_m": null,
+      "is_primary_threat": null
+    },
+    "ally": {
+      "ally_ref": "ally_1",
+      "ally_runtime_id": null,
+      "callsign": null,
+      "range_m": null,
+      "bearing_deg": null,
+      "is_supporting": true
+    },
+    "engagement": {
+      "is_merge": false,
+      "is_defensive": false,
+      "has_shot_opportunity": null
+    },
+    "history": {
+      "prev_semantic_state": null,
+      "prev_token_family": null,
+      "prev_target_ref": null
+    }
+  },
+  "label": {
+    "semantic_state": "hold_geometry",
+    "target_ref": "enemy_1",
+    "role": "support",
+    "constraints": {
+      "prefer_energy_preserve": null,
+      "allow_aggressive_turn": null,
+      "must_support_teammate": true,
+      "should_abort_if_threatened": null
+    },
+    "profile_hint": "p6dof_semantic",
+    "event_flags": {
+      "target_switch": null
+    },
+    "rationale_short": "AIR022 mapped OBFM_AW_assess -> hold_geometry | choose ppmjid and secondary shoot_list targets"
+  },
+  "evidence": {
+    "rule_ids": [
+      "AIR022"
+    ],
+    "acmi_refs": [],
+    "frame_refs": [
+      "pref_001",
+      "assessment_scripts.txt"
+    ],
+    "notes": "choose ppmjid and secondary shoot_list targets | legacy_profile_hint=target_ranking_and_queueing | decision=Rank bandits by WEZ proximity, protected-entity threat, saturation, and mission bias; select ppmjid as max TargetValue and add additional shoot_list entries above 20.0 | Target ranking should override weapon doctrine when saturation and protected-entity threat invert the better target. | pair_type=target_switch | ego.mission_type=DCA; ego.ENG_TGT=red_2; enemy.target_A=ENG_TGT but saturated; enemy.target_B=threatens protected entity and in_RTR; ally.protected_entity=valid; weapons.mapMXTGTD_target_A=reached; geometry.rmax_fraction_A=0.62; geometry.rmax_fraction_B=0.67"
+  },
+  "quality": {
+    "tier": "bronze",
+    "confidence": 0.68,
+    "needs_review": true,
+    "conflict_flag": true
+  },
+  "extras": {
+    "raw_object_ids": null,
+    "raw_tags": [
+      "dataset:preference",
+      "legacy_semantic_state:OBFM_AW_assess",
+      "legacy_profile_hint:target_ranking_and_queueing",
+      "pair_type:target_switch",
+      "pair_role:chosen",
+      "rule_scope:target_selection"
+    ],
+    "weapon_event_refs": null
+  }
+}
